@@ -1,7 +1,20 @@
-"""Fast, transferable Multipole MOMENT-based charge Assignment for polarizable force fields."""
+"""MMomentA: Fast, transferable Multipole Moment-based charge Assignment.
 
-# Add imports here
-from .mmomenta import *
+A machine learning framework for learning multipole moment-based charge
+fitting (MPFIT) for polarizable force fields, combining quantum chemistry
+calculations with graph neural network architectures.
+"""
 
+from . import qm
+from . import data
+from . import comparison
+from . import models
+from . import training
+from . import utils
 
-from ._version import __version__
+__all__ = ["qm", "data", "comparison", "models", "training", "utils"]
+
+try:
+    from ._version import __version__
+except ImportError:
+    __version__ = "unknown"

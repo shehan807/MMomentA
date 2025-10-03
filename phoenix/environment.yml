@@ -1,0 +1,28 @@
+name: mmomenta
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - numpy
+  - scipy
+  - pandas
+  - matplotlib
+  - seaborn
+  - jupyter
+  - rdkit
+  - openbabel
+  - psi4
+  - h5py
+  - pytables
+  - joblib
+  - pytorch::pytorch
+  - pytorch::torchvision
+  - pytorch::torchaudio
+  - pytorch::cpuonly  # Remove for GPU version
+  - dgl
+  - pip:
+      - openff-toolkit
+      - openff-recharge
+      - openff-units

@@ -19,7 +19,8 @@ dependencies:
   - pytables
   - joblib
   - pytorch
-  - pytorch-cuda=11.8
+  - pytorch-gpu
+  - cudatoolkit=11.8
   - pip:
       - dgl -f https://data.dgl.ai/wheels/torch-2.6/cu118/repo.html
       - openff-toolkit

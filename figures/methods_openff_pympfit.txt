@@ -1,0 +1,9 @@
+METHODS SECTION - MPFIT Charge Assignment
+
+Multipole moment-fitted (MPFIT) partial atomic charges were computed using the openff-PyMPFIT package, which implements the charge fitting methodology described by Rackers et al. The MPFIT approach assigns atomic partial charges by reproducing quantum mechanical (QM) multipole moments rather than the electrostatic potential (ESP) directly, providing a more robust characterization of molecular charge distributions. For each molecule, QM calculations were performed at the HF/6-31G* level of theory using Psi4, followed by distributed multipole analysis (DMA) using GDMA to compute atom-centered multipole moments up to rank 8 (L_max = 8), yielding 81 multipole components per atom. The MPFIT solver then determined partial atomic charges that optimally reproduced these multipole moments while satisfying the constraint of total molecular charge conservation. This approach circumvents common limitations of ESP-based methods (e.g., RESP), such as sensitivity to conformational changes and poorly defined charges for buried atoms, while providing physically meaningful charge distributions suitable for polarizable force field development. The openff-PyMPFIT implementation integrates with the OpenFF Toolkit for automated molecular processing and supports efficient batch parallelization via joblib for high-throughput charge assignment across large molecular datasets.
+
+Key citations:
+- Rackers et al. (2019) J. Chem. Phys. 150, 084104 (MPFIT methodology)
+- Stone (2005) J. Chem. Theory Comput. 1, 1128-1132 (GDMA)
+- OpenFF Toolkit: https://github.com/openforcefield/openff-toolkit
+- openff-PyMPFIT: https://github.com/openforcefield/openff-recharge

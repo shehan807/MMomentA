@@ -14,29 +14,12 @@ if [ $? -ne 0 ]; then
 fi
 echo "✓ Anaconda3 module loaded"
 
-# Install mamba for faster environment solving
-echo ""
-echo "Installing mamba (faster than conda)..."
-conda install mamba -n base -c conda-forge -y
-if [ $? -ne 0 ]; then
-    echo "✗ Failed to install mamba, falling back to conda"
-    USE_MAMBA=false
-else
-    echo "✓ Mamba installed"
-    USE_MAMBA=true
-fi
-
 # Create conda environment from YAML
 echo ""
 echo "Creating conda environment 'mmomenta'..."
-if [ "$USE_MAMBA" = true ]; then
-    echo "Using mamba for faster solving (typically 2-5 minutes)..."
-    mamba env create -f environment.yml
-else
-    echo "Using conda (may take 10-15 minutes)..."
-    conda env create -f environment.yml
-fi
+echo "Using conda (may take 10-15 minutes)..."
 
+conda env create -f environment.yml
 if [ $? -ne 0 ]; then
     echo ""
     echo "✗ Failed to create conda environment"

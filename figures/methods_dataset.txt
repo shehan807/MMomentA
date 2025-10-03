@@ -1,0 +1,10 @@
+METHODS SECTION - Dataset
+
+The training dataset was derived from the SPICE 2.0.1 dataset (Small-molecule/Protein Interaction Chemical Energies), a comprehensive quantum chemistry dataset containing 2,008,126 conformers across 113,985 unique small molecules and peptides relevant to drug discovery and biomolecular simulation. SPICE provides QM energies, forces, and multipole moments calculated at the ωB97M-D3(BJ)/def2-TZVPPD level of theory, offering high-quality reference data for training machine learning potentials. For this study, we extracted a subset of [N] diverse drug-like molecules from SPICE, focusing on molecules with 5-30 heavy atoms to balance computational efficiency with chemical diversity. Each molecule underwent MPFIT charge fitting at the HF/6-31G* level using openff-PyMPFIT with GDMA multipole moments up to rank 8. The resulting dataset includes atom-centered multipole moments (81 components per atom) alongside computed MPFIT charges as training targets. Molecular features were extracted using the OpenFF Toolkit, including atomic numbers, hybridization states, formal charges, aromaticity, and ring membership, yielding a 117-dimensional baseline feature vector per atom. When combined with the 81 multipole components, the full MMomentA feature set comprises 198 dimensions per atom. The dataset was split into training (70%), validation (15%), and test (15%) sets using random/scaffold-based splitting to ensure evaluation on chemically distinct molecular scaffolds, thereby testing the model's ability to generalize across chemical space. All molecular graphs were constructed using DGL with atoms as nodes and bonds as edges, following the architecture conventions of espaloma-charge to facilitate direct comparison with existing charge prediction models.
+
+Key citations:
+- Eastman et al. (2023) Sci. Data 10, 11 (SPICE 1.0)
+- Galvelis et al. (2024) J. Chem. Theory Comput. 20, 8583-8593 (SPICE 2.0 - Nutmeg)
+- SPICE Dataset: https://doi.org/10.5281/zenodo.10975225
+- DGL: https://www.dgl.ai/
+- espaloma-charge: Takaba et al. (2023) https://github.com/choderalab/espaloma-charge

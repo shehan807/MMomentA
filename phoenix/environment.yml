@@ -1,6 +1,7 @@
 name: mmomenta
 channels:
   - conda-forge
+  - psi4
   - defaults
 dependencies:
   - python=3.10
@@ -17,12 +18,10 @@ dependencies:
   - h5py
   - pytables
   - joblib
-  - pytorch::pytorch
-  - pytorch::torchvision
-  - pytorch::torchaudio
-  - pytorch::cpuonly  # Remove for GPU version
-  - dgl
+  - pytorch
+  - pytorch-cuda=11.8
   - pip:
+      - dgl -f https://data.dgl.ai/wheels/torch-2.6/cu118/repo.html
       - openff-toolkit
       - openff-recharge
       - openff-units

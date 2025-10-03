@@ -15,6 +15,7 @@ dependencies:
   - rdkit
   - openbabel
   - psi4
+  - pygdma
   - h5py
   - pytables
   - joblib

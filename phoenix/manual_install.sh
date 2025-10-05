@@ -1,5 +1,5 @@
 #!/bin/bash
-# Manual step-by-step installation
+# Manual step-by-step installation (conda only, no mamba)
 # Run interactively or watch output carefully
 
 echo "================================================"
@@ -10,8 +10,7 @@ module load anaconda3/2022.05
 
 # Step 1: Base environment
 echo ""
-echo "Step 1/10: Creating base environment..."
-# Use Python 3.11 (better openbabel compatibility than 3.10)
+echo "Step 1/9: Creating base environment..."
 conda create -n mmomenta python=3.11 pip -y
 if [ $? -ne 0 ]; then
     echo "✗ Failed to create base environment"
@@ -20,21 +19,10 @@ fi
 source activate mmomenta
 echo "✓ Base environment created"
 
-# Step 2: Mamba
+# Step 2: Scientific stack
 echo ""
-echo "Step 2/10: Installing mamba..."
-conda install mamba -c conda-forge -y
-if [ $? -ne 0 ]; then
-    echo "✗ Mamba installation failed, continuing with conda..."
-    alias mamba=conda
-else
-    echo "✓ Mamba installed"
-fi
-
-# Step 3: Scientific stack
-echo ""
-echo "Step 3/10: Installing scientific packages..."
-mamba install -c conda-forge -y \
+echo "Step 2/9: Installing scientific packages..."
+conda install -c conda-forge -y \
     numpy scipy pandas matplotlib seaborn h5py pytables joblib
 if [ $? -ne 0 ]; then
     echo "✗ Scientific packages failed"
@@ -42,24 +30,24 @@ if [ $? -ne 0 ]; then
 fi
 echo "✓ Scientific packages installed"
 
-# Step 4: Chemistry tools
+# Step 3: Chemistry tools
 echo ""
-echo "Step 4/10: Installing chemistry tools (may take 5-10 min)..."
-mamba install -c conda-forge -y rdkit openbabel
+echo "Step 3/9: Installing chemistry tools (may take 5-10 min)..."
+conda install -c conda-forge -y rdkit openbabel
 if [ $? -ne 0 ]; then
     echo "✗ Chemistry tools failed"
     exit 1
 fi
 echo "✓ Chemistry tools installed"
 
-# Step 5: QM packages
+# Step 4: QM packages
 echo ""
-echo "Step 5/10: Installing Psi4 and GDMA (may take 10-20 min)..."
+echo "Step 4/9: Installing Psi4 and GDMA (may take 10-20 min)..."
 echo "This is the slowest step - be patient..."
-mamba install -c conda-forge -c psi4 -y psi4 pygdma
+conda install -c conda-forge -c psi4 -y psi4 pygdma
 if [ $? -ne 0 ]; then
-    echo "Psi4 installation via mamba failed, trying separately..."
-    mamba install -c psi4 psi4 -y
+    echo "Psi4 installation failed, trying separately..."
+    conda install -c psi4 psi4 -y
     if [ $? -ne 0 ]; then
         echo "✗ Psi4 installation failed"
         echo "You can continue and install Psi4 manually later"
@@ -69,23 +57,23 @@ if [ $? -ne 0 ]; then
             exit 1
         fi
     else
-        mamba install -c conda-forge pygdma -y
+        conda install -c conda-forge pygdma -y
     fi
 else
     echo "✓ QM packages installed"
 fi
 
-# Step 6: PyTorch
+# Step 5: PyTorch
 echo ""
-echo "Step 6/10: Installing PyTorch with CUDA..."
+echo "Step 5/9: Installing PyTorch with CUDA..."
 module load cuda/11.8
 
-# Use conda with pytorch and nvidia channels (correct syntax)
+# Use conda with pytorch and nvidia channels
 echo "Installing PyTorch with CUDA 11.8..."
-mamba install -y pytorch pytorch-cuda=11.8 -c pytorch -c nvidia
+conda install -y pytorch pytorch-cuda=11.8 -c pytorch -c nvidia
 if [ $? -ne 0 ]; then
     echo "CUDA 11.8 failed, trying CUDA 12.1..."
-    mamba install -y pytorch pytorch-cuda=12.1 -c pytorch -c nvidia
+    conda install -y pytorch pytorch-cuda=12.1 -c pytorch -c nvidia
     if [ $? -ne 0 ]; then
         echo "✗ PyTorch installation failed"
         exit 1
@@ -97,9 +85,9 @@ echo "✓ PyTorch installed"
 echo "Checking CUDA availability..."
 python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda if torch.cuda.is_available() else None}')"
 
-# Step 7: DGL
+# Step 6: DGL
 echo ""
-echo "Step 7/10: Installing DGL..."
+echo "Step 6/9: Installing DGL..."
 pip install dgl -f https://data.dgl.ai/wheels/torch-2.6/cu118/repo.html
 if [ $? -ne 0 ]; then
     echo "✗ DGL installation failed"
@@ -107,12 +95,12 @@ if [ $? -ne 0 ]; then
 fi
 echo "✓ DGL installed"
 
-# Step 8: OpenFF dependencies
+# Step 7: OpenFF dependencies
 echo ""
-echo "Step 8/10: Installing OpenFF dependencies..."
+echo "Step 7/9: Installing OpenFF dependencies..."
 
 # Install OpenFF dependencies from conda
-mamba install -c conda-forge -y \
+conda install -c conda-forge -y \
     packaging \
     openff-forcefields \
     openff-amber-ff-ports \
@@ -172,19 +160,19 @@ if [ $? -ne 0 ]; then
 fi
 echo "✓ OpenFF Recharge installed"
 
-# Step 9: Jupyter (optional)
+# Step 8: Jupyter (optional)
 echo ""
-echo "Step 9/10: Installing Jupyter..."
-mamba install -c conda-forge jupyter -y
+echo "Step 8/9: Installing Jupyter..."
+conda install -c conda-forge jupyter -y
 if [ $? -ne 0 ]; then
     echo "⚠ Jupyter installation failed (optional, continuing...)"
 else
     echo "✓ Jupyter installed"
 fi
 
-# Step 10: MMomentA
+# Step 9: MMomentA
 echo ""
-echo "Step 10/10: Installing MMomentA..."
+echo "Step 9/9: Installing MMomentA..."
 cd ~/MMomentA
 pip install -e .
 if [ $? -ne 0 ]; then

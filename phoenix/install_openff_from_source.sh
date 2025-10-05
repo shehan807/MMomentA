@@ -20,7 +20,7 @@ echo "Active environment: $CONDA_DEFAULT_ENV"
 # Install all dependencies first
 echo ""
 echo "Installing OpenFF dependencies via conda..."
-mamba install -c conda-forge -y \
+conda install -c conda-forge -y \
     packaging \
     openff-forcefields \
     openff-amber-ff-ports \

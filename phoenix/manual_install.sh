@@ -6,7 +6,7 @@ echo "================================================"
 echo "MMomentA Manual Installation (Step-by-Step)"
 echo "================================================"
 
-module load anaconda3/2022.05
+module load anaconda3
 
 # Step 1: Base environment
 echo ""
@@ -66,7 +66,7 @@ fi
 # Step 5: PyTorch
 echo ""
 echo "Step 5/9: Installing PyTorch with CUDA..."
-module load cuda/11.8
+module load cuda
 
 # Use conda with pytorch and nvidia channels
 echo "Installing PyTorch with CUDA 11.8..."

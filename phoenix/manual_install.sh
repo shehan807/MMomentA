@@ -79,16 +79,23 @@ fi
 echo ""
 echo "Step 6/10: Installing PyTorch with CUDA..."
 module load cuda/11.8
-mamba install -c conda-forge -y pytorch pytorch-gpu cudatoolkit=11.8
+
+# Use conda with pytorch and nvidia channels (correct syntax)
+echo "Installing PyTorch with CUDA 11.8..."
+mamba install -y pytorch pytorch-cuda=11.8 -c pytorch -c nvidia
 if [ $? -ne 0 ]; then
-    echo "✗ PyTorch installation failed"
-    exit 1
+    echo "CUDA 11.8 failed, trying CUDA 12.1..."
+    mamba install -y pytorch pytorch-cuda=12.1 -c pytorch -c nvidia
+    if [ $? -ne 0 ]; then
+        echo "✗ PyTorch installation failed"
+        exit 1
+    fi
 fi
 echo "✓ PyTorch installed"
 
 # Verify CUDA
 echo "Checking CUDA availability..."
-python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda if torch.cuda.is_available() else None}')"
 
 # Step 7: DGL
 echo ""
@@ -100,15 +107,70 @@ if [ $? -ne 0 ]; then
 fi
 echo "✓ DGL installed"
 
-# Step 8: OpenFF
+# Step 8: OpenFF dependencies
 echo ""
-echo "Step 8/10: Installing OpenFF packages..."
-pip install openff-toolkit openff-recharge openff-units
+echo "Step 8/10: Installing OpenFF dependencies..."
+
+# Install OpenFF dependencies from conda
+mamba install -c conda-forge -y \
+    packaging \
+    openff-forcefields \
+    openff-amber-ff-ports \
+    openff-units \
+    openff-utilities \
+    networkx \
+    xmltodict \
+    pymongo \
+    python-constraint \
+    cachetools \
+    typing_extensions \
+    openmm \
+    mdtraj \
+    ambertools
+
 if [ $? -ne 0 ]; then
-    echo "✗ OpenFF packages failed"
+    echo "✗ OpenFF dependencies failed"
     exit 1
 fi
-echo "✓ OpenFF packages installed"
+echo "✓ OpenFF dependencies installed"
+
+# Install OpenFF Toolkit from source
+echo ""
+echo "Installing OpenFF Toolkit from source..."
+cd ~/
+git clone https://github.com/openforcefield/openff-toolkit.git
+cd openff-toolkit
+git checkout 0.17.1
+python -m pip install .
+if [ $? -ne 0 ]; then
+    echo "✗ OpenFF Toolkit installation failed"
+    exit 1
+fi
+echo "✓ OpenFF Toolkit installed from source"
+
+# Install OpenFF Interchange from source
+echo ""
+echo "Installing OpenFF Interchange from source..."
+cd ~/
+git clone https://github.com/openforcefield/openff-interchange.git
+cd openff-interchange
+git checkout 0.4.0
+python -m pip install .
+if [ $? -ne 0 ]; then
+    echo "✗ OpenFF Interchange installation failed"
+    exit 1
+fi
+echo "✓ OpenFF Interchange installed from source"
+
+# Install OpenFF Recharge (can use pip)
+echo ""
+echo "Installing OpenFF Recharge..."
+pip install openff-recharge
+if [ $? -ne 0 ]; then
+    echo "✗ OpenFF Recharge failed"
+    exit 1
+fi
+echo "✓ OpenFF Recharge installed"
 
 # Step 9: Jupyter (optional)
 echo ""

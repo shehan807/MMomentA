@@ -1,5 +1,7 @@
 name: mmomenta
 channels:
+  - pytorch
+  - nvidia
   - conda-forge
   - psi4
   - defaults
@@ -21,10 +23,25 @@ dependencies:
   - pytables
   - joblib
   - pytorch
-  - pytorch-gpu
-  - cudatoolkit=11.8
+  - pytorch-cuda=11.8
+  # OpenFF dependencies
+  - packaging
+  - openff-forcefields
+  - openff-amber-ff-ports
+  - openff-units
+  - openff-utilities
+  - networkx
+  - xmltodict
+  - pymongo
+  - python-constraint
+  - cachetools
+  - typing_extensions
+  - openmm >=7.6
+  - mdtraj
+  - ambertools >=22
   - pip:
       - dgl -f https://data.dgl.ai/wheels/torch-2.6/cu118/repo.html
-      - openff-toolkit
+      # OpenFF packages will be installed from source via script
+      # - openff-toolkit (from source)
+      # - openff-interchange (from source)
       - openff-recharge
-      - openff-units

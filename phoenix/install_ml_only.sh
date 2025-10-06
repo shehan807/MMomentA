@@ -6,20 +6,32 @@ echo "================================================"
 echo "MMomentA ML-Only Environment Setup"
 echo "================================================"
 
+MMOMENTA_DIR="/storage/home/hcoda1/4/sparmar32/r-jmcdaniel43-0/scripts/MMomentA_MoML"
+
 module load anaconda3
 module load cuda
 
+# Remove existing environment
+echo ""
+echo "Removing any existing mmomenta-ml environment..."
+conda env remove -n mmomenta-ml -y 2>/dev/null || true
+
 echo ""
 echo "Creating mmomenta-ml environment..."
+cd "$MMOMENTA_DIR"
 conda env create -f phoenix/environment_ml.yml
+if [ $? -ne 0 ]; then
+    echo "✗ Failed to create environment"
+    exit 1
+fi
 
 echo ""
 echo "Activating environment..."
-conda activate mmomenta-ml
+source activate mmomenta-ml
 
 echo ""
 echo "Installing MMomentA package..."
-cd ~/MMomentA
+cd "$MMOMENTA_DIR/MMomentA"
 pip install -e .
 
 echo ""

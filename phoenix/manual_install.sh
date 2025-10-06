@@ -9,9 +9,17 @@ echo "================================================"
 module load anaconda3
 module load cuda
 
+# Suppress libmamba warnings
+export CONDA_VERBOSITY=1
+
+# Remove any existing environment
+echo ""
+echo "Removing any existing mmomenta environment..."
+conda env remove -n mmomenta -y 2>/dev/null || true
+
 # Step 1: Create base environment first
 echo ""
-echo "Step 1/9: Creating base environment..."
+echo "Step 1/9: Creating base environment with Python 3.11..."
 conda create -n mmomenta -y python=3.11
 if [ $? -ne 0 ]; then
     echo "✗ Failed to create base environment"

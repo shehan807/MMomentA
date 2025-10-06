@@ -6,20 +6,32 @@ echo "================================================"
 echo "MMomentA Data Generation Environment Setup"
 echo "================================================"
 
+MMOMENTA_DIR="/storage/home/hcoda1/4/sparmar32/r-jmcdaniel43-0/scripts/MMomentA_MoML"
+
 module load anaconda3
+
+# Remove existing environment
+echo ""
+echo "Removing any existing mmomenta-data environment..."
+conda env remove -n mmomenta-data -y 2>/dev/null || true
 
 echo ""
 echo "Creating mmomenta-data environment..."
+cd "$MMOMENTA_DIR"
 conda env create -f phoenix/environment_data.yml
+if [ $? -ne 0 ]; then
+    echo "✗ Failed to create environment"
+    exit 1
+fi
 
 echo ""
 echo "Activating environment..."
-conda activate mmomenta-data
+source activate mmomenta-data
 
 # Install OpenFF Toolkit from source
 echo ""
 echo "Installing OpenFF Toolkit from source..."
-cd ~/
+cd "$MMOMENTA_DIR"
 if [ -d "openff-toolkit" ]; then
     rm -rf openff-toolkit
 fi
@@ -31,7 +43,7 @@ pip install .
 # Install OpenFF Interchange from source
 echo ""
 echo "Installing OpenFF Interchange from source..."
-cd ~/
+cd "$MMOMENTA_DIR"
 if [ -d "openff-interchange" ]; then
     rm -rf openff-interchange
 fi
@@ -42,7 +54,7 @@ pip install .
 
 echo ""
 echo "Installing MMomentA package..."
-cd ~/MMomentA
+cd "$MMOMENTA_DIR/MMomentA"
 pip install -e .
 
 echo ""

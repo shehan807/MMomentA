@@ -228,26 +228,23 @@ def main():
             # Convert conformer to plain numpy array (strip units if present)
             conformer = mpfit_data['conformer']
 
-            # Handle OpenFF Quantity objects with units
-            if hasattr(conformer, 'magnitude'):
-                # Has pint units, extract magnitude
-                conformer = conformer.magnitude
-            elif hasattr(conformer, 'm'):
-                # Alternative unit attribute
-                conformer = conformer.m
+            # Recursively strip units from nested structures
+            def strip_units(obj):
+                if hasattr(obj, 'magnitude'):
+                    return strip_units(obj.magnitude)
+                elif hasattr(obj, 'm'):
+                    return strip_units(obj.m)
+                elif isinstance(obj, np.ndarray):
+                    # For numpy arrays, convert to list first to strip units
+                    return [[float(strip_units(x)) for x in row] if hasattr(row, '__iter__') and not isinstance(row, str)
+                            else float(strip_units(row)) for row in obj]
+                elif isinstance(obj, (list, tuple)):
+                    return [strip_units(x) for x in obj]
+                else:
+                    return float(obj) if not isinstance(obj, str) else obj
 
-            # Recursively strip units from nested arrays
-            def strip_units(arr):
-                if hasattr(arr, 'magnitude'):
-                    return arr.magnitude
-                elif hasattr(arr, 'm'):
-                    return arr.m
-                elif isinstance(arr, (list, tuple)):
-                    return [strip_units(x) for x in arr]
-                return arr
-
-            conformer = strip_units(conformer)
-            conformer = np.asarray(conformer, dtype=float)
+            conformer_clean = strip_units(conformer)
+            conformer = np.array(conformer_clean, dtype=float)
 
             mpfit_result = MPFITResult(
                 charges=np.array(mpfit_data['charges']),

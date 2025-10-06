@@ -143,9 +143,13 @@ def save_dataset_hdf5(
 
             graph_structure_group = mol_group.create_group('graph_structure')
             for key, value in mol_data.graph_structure.items():
-                graph_structure_group.create_dataset(
-                    key, data=value, compression=compression
-                )
+                # Don't use compression for scalar values
+                if np.isscalar(value) or (hasattr(value, 'shape') and value.shape == ()):
+                    graph_structure_group.create_dataset(key, data=value)
+                else:
+                    graph_structure_group.create_dataset(
+                        key, data=value, compression=compression
+                    )
 
             mol_group.attrs['qm_metadata'] = json.dumps(mol_data.qm_metadata)
 

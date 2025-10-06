@@ -7,21 +7,42 @@ echo "MMomentA Manual Installation (Step-by-Step)"
 echo "================================================"
 
 module load anaconda3
+module load cuda
 
-# Step 1: Base environment
+# Step 1: Create environment with PyTorch first (let it determine Python version)
 echo ""
-echo "Step 1/9: Creating base environment..."
-conda create -n mmomenta python=3.11 pip -y
+echo "Step 1/9: Creating environment with PyTorch 2.4..."
+echo "This will automatically select compatible Python version..."
+conda create -n mmomenta -y pytorch=2.4 pytorch-cuda=11.8 -c pytorch -c nvidia
 if [ $? -ne 0 ]; then
-    echo "✗ Failed to create base environment"
+    echo "✗ Failed to create environment with PyTorch"
     exit 1
 fi
 source activate mmomenta
-echo "✓ Base environment created"
+echo "✓ Environment created with PyTorch 2.4"
 
-# Step 2: Scientific stack
+# Check what Python version was selected
 echo ""
-echo "Step 2/9: Installing scientific packages..."
+echo "Python version selected:"
+python --version
+
+# Step 2: DGL (compatible with PyTorch 2.4)
+echo ""
+echo "Step 2/9: Installing DGL for PyTorch 2.4..."
+conda install -y -c dglteam/label/th24_cu118 dgl
+if [ $? -ne 0 ]; then
+    echo "✗ DGL installation failed"
+    exit 1
+fi
+echo "✓ DGL installed"
+
+# Verify PyTorch and DGL
+echo "Checking PyTorch and DGL..."
+python -c "import torch, dgl; print(f'PyTorch: {torch.__version__}'); print(f'DGL: {dgl.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}')"
+
+# Step 3: Scientific stack
+echo ""
+echo "Step 3/9: Installing scientific packages..."
 conda install -c conda-forge -y \
     numpy scipy pandas matplotlib seaborn h5py pytables joblib
 if [ $? -ne 0 ]; then
@@ -30,9 +51,9 @@ if [ $? -ne 0 ]; then
 fi
 echo "✓ Scientific packages installed"
 
-# Step 3: Chemistry tools
+# Step 4: Chemistry tools
 echo ""
-echo "Step 3/9: Installing chemistry tools (may take 5-10 min)..."
+echo "Step 4/9: Installing chemistry tools (may take 5-10 min)..."
 conda install -c conda-forge -y rdkit openbabel
 if [ $? -ne 0 ]; then
     echo "✗ Chemistry tools failed"
@@ -40,9 +61,9 @@ if [ $? -ne 0 ]; then
 fi
 echo "✓ Chemistry tools installed"
 
-# Step 4: QM packages
+# Step 5: QM packages
 echo ""
-echo "Step 4/9: Installing Psi4 and GDMA (may take 10-20 min)..."
+echo "Step 5/9: Installing Psi4 and GDMA (may take 10-20 min)..."
 echo "This is the slowest step - be patient..."
 conda install -c conda-forge -c psi4 -y psi4 pygdma
 if [ $? -ne 0 ]; then
@@ -63,37 +84,9 @@ else
     echo "✓ QM packages installed"
 fi
 
-# Step 5: PyTorch 2.4
+# Step 6: OpenFF dependencies
 echo ""
-echo "Step 5/9: Installing PyTorch 2.4 with CUDA..."
-module load cuda
-
-# Use PyTorch 2.4 for DGL compatibility
-echo "Installing PyTorch 2.4 with CUDA 11.8..."
-conda install -y pytorch=2.4 pytorch-cuda=11.8 -c pytorch -c nvidia
-if [ $? -ne 0 ]; then
-    echo "✗ PyTorch installation failed"
-    exit 1
-fi
-echo "✓ PyTorch 2.4 installed"
-
-# Verify CUDA
-echo "Checking CUDA availability..."
-python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda if torch.cuda.is_available() else None}')"
-
-# Step 6: DGL (compatible with PyTorch 2.4)
-echo ""
-echo "Step 6/9: Installing DGL for PyTorch 2.4..."
-conda install -y -c dglteam/label/th24_cu118 dgl
-if [ $? -ne 0 ]; then
-    echo "✗ DGL installation failed"
-    exit 1
-fi
-echo "✓ DGL installed"
-
-# Step 7: OpenFF dependencies
-echo ""
-echo "Step 7/9: Installing OpenFF dependencies..."
+echo "Step 6/9: Installing OpenFF dependencies..."
 
 # Install OpenFF dependencies from conda
 conda install -c conda-forge -y \
@@ -156,9 +149,9 @@ if [ $? -ne 0 ]; then
 fi
 echo "✓ OpenFF Recharge installed"
 
-# Step 8: Jupyter (optional)
+# Step 7: Jupyter (optional)
 echo ""
-echo "Step 8/9: Installing Jupyter..."
+echo "Step 7/9: Installing Jupyter..."
 conda install -c conda-forge jupyter -y
 if [ $? -ne 0 ]; then
     echo "⚠ Jupyter installation failed (optional, continuing...)"
@@ -166,9 +159,9 @@ else
     echo "✓ Jupyter installed"
 fi
 
-# Step 9: MMomentA
+# Step 8: MMomentA
 echo ""
-echo "Step 9/9: Installing MMomentA..."
+echo "Step 8/8: Installing MMomentA..."
 cd ~/MMomentA
 pip install -e .
 if [ $? -ne 0 ]; then

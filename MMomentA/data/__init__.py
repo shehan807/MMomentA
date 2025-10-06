@@ -1,11 +1,17 @@
 """Data processing modules for MMomentA."""
 
-from .batch import batch_process_molecules, BatchProcessor
-from .loaders import load_molecules_from_file, load_zinc_molecules, load_spice_molecules
 from .schema import MoleculeData, DatasetMetadata
-from .extraction import extract_molecule_data, batch_extract_molecule_data
-from .splitting import scaffold_split, random_split, stratified_split, split_by_names
 from .storage import save_dataset, load_dataset
+
+# Optional OpenFF imports (require OpenFF)
+try:
+    from .batch import batch_process_molecules, BatchProcessor
+    from .loaders import load_molecules_from_file, load_zinc_molecules, load_spice_molecules
+    from .extraction import extract_molecule_data, batch_extract_molecule_data
+    from .splitting import scaffold_split, random_split, stratified_split, split_by_names
+    _HAS_OPENFF = True
+except ImportError:
+    _HAS_OPENFF = False
 
 # Optional PyTorch/DGL imports
 try:
@@ -16,22 +22,26 @@ except ImportError:
     _HAS_TORCH = False
 
 __all__ = [
-    "batch_process_molecules",
-    "BatchProcessor",
-    "load_molecules_from_file",
-    "load_zinc_molecules",
-    "load_spice_molecules",
     "MoleculeData",
     "DatasetMetadata",
-    "extract_molecule_data",
-    "batch_extract_molecule_data",
-    "scaffold_split",
-    "random_split",
-    "stratified_split",
-    "split_by_names",
     "save_dataset",
     "load_dataset",
 ]
+
+if _HAS_OPENFF:
+    __all__.extend([
+        "batch_process_molecules",
+        "BatchProcessor",
+        "load_molecules_from_file",
+        "load_zinc_molecules",
+        "load_spice_molecules",
+        "extract_molecule_data",
+        "batch_extract_molecule_data",
+        "scaffold_split",
+        "random_split",
+        "stratified_split",
+        "split_by_names",
+    ])
 
 if _HAS_TORCH:
     __all__.extend([

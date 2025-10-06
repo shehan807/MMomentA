@@ -160,6 +160,11 @@ def main():
         default=None,
         help="Log file path (default: console only)"
     )
+    parser.add_argument(
+        "--print-charges",
+        action="store_true",
+        help="Print SMILES and charges for each molecule"
+    )
 
     args = parser.parse_args()
 
@@ -232,6 +237,11 @@ def main():
                 error_message=None
             )
             successful_results.append(mpfit_result)
+
+            # Print charges if requested
+            if args.print_charges:
+                charges_str = np.array2string(mpfit_result.charges, precision=4, separator=', ')
+                logger.info(f"  {mpfit_data['smiles']}: {charges_str}")
 
     logger.info(f"Successfully processed {len(successful_molecules)}/{len(molecules)} molecules")
 

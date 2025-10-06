@@ -1,0 +1,26 @@
+name: mmomenta-ml
+channels:
+  - pytorch
+  - nvidia
+  - dglteam/label/th24_cu121
+  - conda-forge
+  - defaults
+dependencies:
+  # Core ML stack - let PyTorch pick Python version
+  - pytorch=2.4
+  - pytorch-cuda=12.1
+  - dgl
+  # Scientific computing
+  - numpy
+  - scipy
+  - pandas
+  - matplotlib
+  - seaborn
+  - h5py
+  - pytables
+  - joblib
+  # For data loading
+  - networkx
+  - pip:
+      # Minimal dependencies for ML training only
+      # No QM packages, no OpenFF Toolkit needed for training

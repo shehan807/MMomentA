@@ -214,10 +214,17 @@ def main():
             from MMomentA.qm.mpfit import MPFITResult
             import numpy as np
 
+            # Convert conformer to plain numpy array (strip units if present)
+            conformer = mpfit_data['conformer']
+            if hasattr(conformer, 'magnitude'):
+                # Has pint units, extract magnitude
+                conformer = conformer.magnitude
+            conformer = np.asarray(conformer, dtype=float)
+
             mpfit_result = MPFITResult(
                 charges=np.array(mpfit_data['charges']),
                 multipole_moments=np.array(mpfit_data['multipole_moments']),
-                conformer=np.array(mpfit_data['conformer']),
+                conformer=conformer,
                 time_seconds=mpfit_data['time'],
                 smiles=mpfit_data['smiles'],
                 metadata=mpfit_data['metadata'],

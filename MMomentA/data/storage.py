@@ -197,10 +197,14 @@ def load_dataset_hdf5(
                 for key in mol_group['atomic_features'].keys()
             }
 
-            graph_structure = {
-                key: mol_group['graph_structure'][key][:]
-                for key in mol_group['graph_structure'].keys()
-            }
+            graph_structure = {}
+            for key in mol_group['graph_structure'].keys():
+                dataset = mol_group['graph_structure'][key]
+                # Handle scalar vs array datasets
+                if dataset.shape == ():
+                    graph_structure[key] = dataset[()]
+                else:
+                    graph_structure[key] = dataset[:]
 
             mol_data = MoleculeData(
                 molecule_id=mol_group.attrs['molecule_id'],

@@ -173,10 +173,16 @@ def main():
         include_multipoles=not args.no_multipoles
     )
 
-    logger.info(f"Feature dimension: {split_data.train_dataset.feature_dim}")
+    # Auto-detect feature dimension from dataset
+    actual_feature_dim = split_data.train_dataset.feature_dim
+    logger.info(f"Feature dimension: {actual_feature_dim}")
+
+    # Override args.feature_units with actual dimension if specified incorrectly
+    if args.feature_units != actual_feature_dim:
+        logger.warning(f"Overriding --feature-units {args.feature_units} with detected dimension {actual_feature_dim}")
 
     model_config = ModelConfig(
-        feature_units=args.feature_units,
+        feature_units=actual_feature_dim,
         depth=args.depth,
         width=args.width,
         activation=args.activation

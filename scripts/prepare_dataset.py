@@ -211,6 +211,12 @@ def main():
     successful_molecules = []
     successful_results = []
 
+    if args.print_charges:
+        logger.info("")
+        logger.info("=" * 70)
+        logger.info("MPFIT Charges by Molecule")
+        logger.info("=" * 70)
+
     for i, result in enumerate(batch_results):
         if result.success and "MPFIT" in result.results:
             successful_molecules.append(molecules[i])
@@ -221,9 +227,26 @@ def main():
 
             # Convert conformer to plain numpy array (strip units if present)
             conformer = mpfit_data['conformer']
+
+            # Handle OpenFF Quantity objects with units
             if hasattr(conformer, 'magnitude'):
                 # Has pint units, extract magnitude
                 conformer = conformer.magnitude
+            elif hasattr(conformer, 'm'):
+                # Alternative unit attribute
+                conformer = conformer.m
+
+            # Recursively strip units from nested arrays
+            def strip_units(arr):
+                if hasattr(arr, 'magnitude'):
+                    return arr.magnitude
+                elif hasattr(arr, 'm'):
+                    return arr.m
+                elif isinstance(arr, (list, tuple)):
+                    return [strip_units(x) for x in arr]
+                return arr
+
+            conformer = strip_units(conformer)
             conformer = np.asarray(conformer, dtype=float)
 
             mpfit_result = MPFITResult(
@@ -240,8 +263,10 @@ def main():
 
             # Print charges if requested
             if args.print_charges:
-                charges_str = np.array2string(mpfit_result.charges, precision=4, separator=', ')
-                logger.info(f"  {mpfit_data['smiles']}: {charges_str}")
+                smiles = mpfit_data['smiles']
+                charges = mpfit_result.charges
+                charges_str = ' '.join([f'{c:7.4f}' for c in charges])
+                logger.info(f"{i+1:3d}. {smiles:20s} [{charges_str}]")
 
     logger.info(f"Successfully processed {len(successful_molecules)}/{len(molecules)} molecules")
 

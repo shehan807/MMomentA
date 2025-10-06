@@ -35,15 +35,11 @@ from datetime import datetime
 from pathlib import Path
 
 from MMomentA.qm import MPFITCalculator, GDMAConfig
-from MMomentA.data import (
-    load_molecules_from_file,
-    BatchProcessor,
-    extract_molecule_data,
-    scaffold_split,
-    random_split,
-    save_dataset,
-    DatasetMetadata
-)
+from MMomentA.data.loaders import load_molecules_from_file
+from MMomentA.data.processor import BatchProcessor
+from MMomentA.data.features import extract_molecule_data
+from MMomentA.data.splits import scaffold_split, random_split
+from MMomentA.data.storage import save_dataset, DatasetMetadata
 from MMomentA.utils import setup_logging
 
 

@@ -6,13 +6,18 @@ calculations with graph neural network architectures.
 """
 
 from . import qm
-from . import data
 from . import comparison
-from . import models
-from . import training
 from . import utils
 
-__all__ = ["qm", "data", "comparison", "models", "training", "utils"]
+# Optional imports (require PyTorch/DGL)
+try:
+    from . import data
+    from . import models
+    from . import training
+    __all__ = ["qm", "data", "comparison", "models", "training", "utils"]
+except ImportError:
+    # Data environment without PyTorch
+    __all__ = ["qm", "comparison", "utils"]
 
 try:
     from ._version import __version__

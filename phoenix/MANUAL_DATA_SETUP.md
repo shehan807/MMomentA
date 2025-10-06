@@ -44,8 +44,11 @@ cd openff-interchange
 git checkout 0.4.0
 pip install .
 
-# 10. Install OpenFF Recharge
-pip install openff-recharge
+# 10. Install OpenFF PyMPFIT (your fork with MPFIT support)
+cd /storage/home/hcoda1/4/sparmar32/r-jmcdaniel43-0/scripts/MMomentA_MoML
+git clone git@github.com:shehan807/openff-PyMPFIT.git
+cd openff-PyMPFIT
+pip install .
 
 # 11. Install MMomentA
 cd /storage/home/hcoda1/4/sparmar32/r-jmcdaniel43-0/scripts/MMomentA_MoML/MMomentA
@@ -66,7 +69,7 @@ python -c "import psi4; from openff.toolkit import Molecule; from mmomenta.qm im
 7. **OpenFF deps** - Dependencies for OpenFF Toolkit
 8. **OpenFF Toolkit** - Molecule handling (from source)
 9. **OpenFF Interchange** - Additional OpenFF utilities (from source)
-10. **OpenFF Recharge** - MPFIT charge calculations
+10. **OpenFF PyMPFIT** - Your fork with MPFIT charge calculations (from source)
 11. **MMomentA** - Your package in editable mode
 12. **Verify** - Check everything works
 

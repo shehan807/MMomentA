@@ -2,8 +2,6 @@
 # Complete MVP Pipeline: Dataset → Training → Results
 # Run this on Phoenix HPC cluster
 
-set -e  # Exit on error
-
 MMOMENTA_DIR="/storage/home/hcoda1/4/sparmar32/r-jmcdaniel43-0/scripts/MMomentA_MoML/MMomentA"
 
 echo "================================================"

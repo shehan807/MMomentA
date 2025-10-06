@@ -179,14 +179,6 @@ class Trainer:
             all_predictions.append(batch_graph.ndata["q"].detach())
             all_targets.append(batch_graph.ndata["q_ref"].detach())
 
-        # Handle empty validation set
-        if len(all_predictions) == 0:
-            return {
-                'val_rmse': float('nan'),
-                'val_mae': float('nan'),
-                'val_max_error': float('nan')
-            }
-
         predictions = torch.cat(all_predictions)
         targets = torch.cat(all_targets)
 

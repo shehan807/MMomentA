@@ -23,7 +23,8 @@ import logging
 from pathlib import Path
 import torch
 
-from MMomentA.data import load_dataset, create_split_datasets
+from MMomentA.data.storage import load_dataset
+from MMomentA.data.dataset import create_split_datasets
 from MMomentA.models import ChargeModel, ModelConfig
 from MMomentA.training import Trainer, TrainingConfig
 from MMomentA.utils import setup_logging, save_results

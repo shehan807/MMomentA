@@ -13,7 +13,7 @@ module load cuda
 echo ""
 echo "Step 1/9: Creating environment with PyTorch 2.4..."
 echo "This will automatically select compatible Python version..."
-conda create -n mmomenta -y pytorch=2.4 pytorch-cuda=11.8 -c pytorch -c nvidia
+conda create -n mmomenta -y pytorch=2.4 pytorch-cuda=12.1 -c pytorch -c nvidia
 if [ $? -ne 0 ]; then
     echo "✗ Failed to create environment with PyTorch"
     exit 1
@@ -29,7 +29,7 @@ python --version
 # Step 2: DGL (compatible with PyTorch 2.4)
 echo ""
 echo "Step 2/9: Installing DGL for PyTorch 2.4..."
-conda install -y -c dglteam/label/th24_cu118 dgl
+conda install -y -c dglteam/label/th24_cu121 dgl
 if [ $? -ne 0 ]; then
     echo "✗ DGL installation failed"
     exit 1
@@ -89,6 +89,7 @@ echo ""
 echo "Step 6/9: Installing OpenFF dependencies..."
 
 # Install OpenFF dependencies from conda
+# Note: Skipping openmm, mdtraj, ambertools (not needed for MPFIT/ML pipeline)
 conda install -c conda-forge -y \
     packaging \
     openff-forcefields \
@@ -100,10 +101,7 @@ conda install -c conda-forge -y \
     pymongo \
     python-constraint \
     cachetools \
-    typing_extensions \
-    openmm \
-    mdtraj \
-    ambertools
+    typing_extensions
 
 if [ $? -ne 0 ]; then
     echo "✗ OpenFF dependencies failed"

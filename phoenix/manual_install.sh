@@ -63,32 +63,28 @@ else
     echo "✓ QM packages installed"
 fi
 
-# Step 5: PyTorch
+# Step 5: PyTorch 2.4
 echo ""
-echo "Step 5/9: Installing PyTorch with CUDA..."
+echo "Step 5/9: Installing PyTorch 2.4 with CUDA..."
 module load cuda
 
-# Use conda with pytorch and nvidia channels
-echo "Installing PyTorch with CUDA 11.8..."
-conda install -y pytorch pytorch-cuda=11.8 -c pytorch -c nvidia
+# Use PyTorch 2.4 for DGL compatibility
+echo "Installing PyTorch 2.4 with CUDA 11.8..."
+conda install -y pytorch=2.4 pytorch-cuda=11.8 -c pytorch -c nvidia
 if [ $? -ne 0 ]; then
-    echo "CUDA 11.8 failed, trying CUDA 12.1..."
-    conda install -y pytorch pytorch-cuda=12.1 -c pytorch -c nvidia
-    if [ $? -ne 0 ]; then
-        echo "✗ PyTorch installation failed"
-        exit 1
-    fi
+    echo "✗ PyTorch installation failed"
+    exit 1
 fi
-echo "✓ PyTorch installed"
+echo "✓ PyTorch 2.4 installed"
 
 # Verify CUDA
 echo "Checking CUDA availability..."
-python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda if torch.cuda.is_available() else None}')"
+python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda if torch.cuda.is_available() else None}')"
 
-# Step 6: DGL
+# Step 6: DGL (compatible with PyTorch 2.4)
 echo ""
-echo "Step 6/9: Installing DGL..."
-pip install dgl -f https://data.dgl.ai/wheels/torch-2.6/cu118/repo.html
+echo "Step 6/9: Installing DGL for PyTorch 2.4..."
+conda install -y -c dglteam/label/th24_cu118 dgl
 if [ $? -ne 0 ]; then
     echo "✗ DGL installation failed"
     exit 1

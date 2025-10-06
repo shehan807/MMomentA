@@ -9,19 +9,28 @@ echo "================================================"
 module load anaconda3
 module load cuda
 
-# Step 1: Create environment with PyTorch first (let it determine Python version)
+# Step 1: Create base environment first
 echo ""
-echo "Step 1/9: Creating environment with PyTorch 2.4..."
-echo "This will automatically select compatible Python version..."
-conda create -n mmomenta -y pytorch=2.4 pytorch-cuda=12.1 -c pytorch -c nvidia
+echo "Step 1/9: Creating base environment..."
+conda create -n mmomenta -y python=3.11
 if [ $? -ne 0 ]; then
-    echo "✗ Failed to create environment with PyTorch"
+    echo "✗ Failed to create base environment"
     exit 1
 fi
 source activate mmomenta
-echo "✓ Environment created with PyTorch 2.4"
+echo "✓ Base environment created"
 
-# Check what Python version was selected
+# Step 1b: Install PyTorch
+echo ""
+echo "Installing PyTorch 2.4 with CUDA 12.1..."
+conda install -y pytorch=2.4 pytorch-cuda=12.1 -c pytorch -c nvidia
+if [ $? -ne 0 ]; then
+    echo "✗ Failed to install PyTorch"
+    exit 1
+fi
+echo "✓ PyTorch 2.4 installed"
+
+# Verify Python version
 echo ""
 echo "Python version selected:"
 python --version

@@ -9,10 +9,13 @@ echo "MMomentA MVP Pipeline"
 echo "================================================"
 echo ""
 
+# Initialize conda for script
+eval "$(conda shell.bash hook)"
+
 # Step 1: Create test SMILES dataset
 echo "Step 1/5: Creating test SMILES dataset (50 molecules)..."
 module load anaconda3
-conda activate mmomenta-ml
+conda activate mmomenta-data  # Needs OpenFF for molecule creation
 
 cd "$MMOMENTA_DIR"
 python scripts/create_test_smiles.py --output data/test_smiles.pkl
@@ -20,9 +23,8 @@ python scripts/create_test_smiles.py --output data/test_smiles.pkl
 echo "✓ Created test_smiles.pkl"
 echo ""
 
-# Step 2: Generate MPFIT charges
+# Step 2: Generate MPFIT charges (already in mmomenta-data)
 echo "Step 2/5: Computing MPFIT charges (20-30 min)..."
-conda activate mmomenta-data
 
 python scripts/prepare_dataset.py \
     --input data/test_smiles.pkl \
@@ -69,9 +71,43 @@ echo "Step 5/5: Comparing results..."
 python << 'EOF'
 import json
 from pathlib import Path
+import os
 
-baseline_results = json.load(open('runs/test_baseline/results.json'))
-multipole_results = json.load(open('runs/test_multipoles/results.json'))
+# Check what files exist
+print("\nChecking for result files...")
+baseline_dir = Path('runs/test_baseline')
+multipole_dir = Path('runs/test_multipoles')
+
+if baseline_dir.exists():
+    print(f"\nBaseline directory contents:")
+    for f in baseline_dir.iterdir():
+        print(f"  {f.name}")
+else:
+    print("\n✗ Baseline directory doesn't exist - training may have failed")
+
+if multipole_dir.exists():
+    print(f"\nMultipole directory contents:")
+    for f in multipole_dir.iterdir():
+        print(f"  {f.name}")
+else:
+    print("\n✗ Multipole directory doesn't exist - training may have failed")
+
+# Try to load results
+baseline_results_file = baseline_dir / 'training_results.json'
+multipole_results_file = multipole_dir / 'training_results.json'
+
+if not baseline_results_file.exists():
+    print(f"\n✗ Missing: {baseline_results_file}")
+    print("Check training log: runs/test_baseline/training.log")
+    exit(1)
+
+if not multipole_results_file.exists():
+    print(f"\n✗ Missing: {multipole_results_file}")
+    print("Check training log: runs/test_multipoles/training.log")
+    exit(1)
+
+baseline_results = json.load(open(baseline_results_file))
+multipole_results = json.load(open(multipole_results_file))
 
 print("\n" + "="*70)
 print("RESULTS COMPARISON")

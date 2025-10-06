@@ -63,8 +63,8 @@ echo "Step 2/4: Computing MPFIT charges for SPICE (30-45 min)..."
 conda activate mmomenta-data
 
 python scripts/prepare_dataset.py \
-    --input data/spice_100.pkl \
-    --output data/spice_mpfit.h5 \
+    --input "$MMOMENTA_DIR/data/spice_100.pkl" \
+    --output "$MMOMENTA_DIR/data/spice_mpfit.h5" \
     --dataset-name "SPICE" \
     --split-strategy random \
     --train-frac 0.7 \
@@ -81,8 +81,8 @@ module load cuda
 conda activate mmomenta-ml
 
 python scripts/train_spice.py \
-    --dataset data/spice_mpfit.h5 \
-    --output-dir runs/spice_baseline \
+    --dataset "$MMOMENTA_DIR/data/spice_mpfit.h5" \
+    --output-dir "$MMOMENTA_DIR/runs/spice_baseline" \
     --no-multipoles \
     --n-epochs 200 \
     --device cuda
@@ -94,8 +94,8 @@ echo ""
 echo "Step 4/4: Training SPICE multipole model (15-20 min)..."
 
 python scripts/train_spice.py \
-    --dataset data/spice_mpfit.h5 \
-    --output-dir runs/spice_multipoles \
+    --dataset "$MMOMENTA_DIR/data/spice_mpfit.h5" \
+    --output-dir "$MMOMENTA_DIR/runs/spice_multipoles" \
     --n-epochs 200 \
     --device cuda
 
@@ -111,14 +111,17 @@ echo ""
 python << 'EOF'
 import json
 
+import os
+MMOMENTA_DIR = os.environ.get('MMOMENTA_DIR', '/storage/home/hcoda1/4/sparmar32/r-jmcdaniel43-0/scripts/MMomentA_MoML/MMomentA')
+
 def load_results(path):
     try:
         return json.load(open(path))
     except:
         return None
 
-baseline = load_results('runs/spice_baseline/training_results.json')
-multipoles = load_results('runs/spice_multipoles/training_results.json')
+baseline = load_results(f'{MMOMENTA_DIR}/runs/spice_baseline/training_results.json')
+multipoles = load_results(f'{MMOMENTA_DIR}/runs/spice_multipoles/training_results.json')
 
 if baseline and multipoles:
     print("Baseline Model (no multipoles):")
@@ -139,9 +142,9 @@ if baseline and multipoles:
     else:
         print("✗ Multipoles did not improve performance")
 
-    print("\nResults saved in:")
-    print("  - runs/spice_baseline/")
-    print("  - runs/spice_multipoles/")
+    print(f"\nResults saved in:")
+    print(f"  - {MMOMENTA_DIR}/runs/spice_baseline/")
+    print(f"  - {MMOMENTA_DIR}/runs/spice_multipoles/")
 else:
     print("✗ Results not available - check training logs")
 

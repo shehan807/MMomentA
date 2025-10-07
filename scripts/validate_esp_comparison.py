@@ -34,9 +34,10 @@ from tqdm import tqdm
 
 from openff.toolkit import Molecule
 
-from MMomentA.data.storage import load_dataset
-from MMomentA.data.dataset import MoleculeGraphDataset
-from MMomentA.data.graph import molecule_to_dgl_graph
+from MMomentA.data.storage import load_dataset_hdf5
+from MMomentA.data.dataset import ChargeDataset
+from MMomentA.data.graph import molecule_data_to_dgl_graph
+from MMomentA.data.schema import MoleculeData
 from MMomentA.models import ChargeModel, ModelConfig
 from esp_utils import compare_grid_esp
 
@@ -189,18 +190,20 @@ def load_model(model_dir: Path, device: str = 'cpu') -> ChargeModel:
     return model
 
 
-def predict_charges(model: ChargeModel, molecule: Molecule,
-                    mpfit_charges: np.ndarray, device: str = 'cpu') -> np.ndarray:
+def predict_charges(model: ChargeModel, mol_data: MoleculeData,
+                    device: str = 'cpu') -> np.ndarray:
     """Predict charges for a molecule using trained model."""
 
-    # Convert molecule to DGL graph
-    graph = molecule_to_dgl_graph(molecule, mpfit_charges, conformer_idx=0)
+    # Convert MoleculeData to DGL graph
+    # Check if model uses multipoles by checking config
+    include_multipoles = getattr(model.config, 'include_multipoles', True)
+    graph = molecule_data_to_dgl_graph(mol_data, include_multipoles=include_multipoles)
     graph = graph.to(device)
 
     # Predict
     with torch.no_grad():
         graph = model(graph)
-        predicted_charges = graph.ndata["q"].cpu().numpy()
+        predicted_charges = graph.ndata["q"].cpu().numpy().flatten()
 
     return predicted_charges
 
@@ -279,10 +282,11 @@ def main():
 
     # Load dataset
     logger.info(f"Loading dataset from {args.dataset}")
-    molecules, charges_dict, split_indices = load_dataset(args.dataset)
+    molecule_data_list, metadata = load_dataset_hdf5(args.dataset)
 
     # Get test molecules
-    test_indices = split_indices.get('test', list(range(min(args.n_molecules, len(molecules)))))
+    split_indices = metadata.get('split_indices', {}) if metadata else {}
+    test_indices = split_indices.get('test', list(range(min(args.n_molecules, len(molecule_data_list)))))
     test_indices = test_indices[:args.n_molecules]
 
     logger.info(f"Validating {len(test_indices)} test molecules")
@@ -298,11 +302,19 @@ def main():
     failed = 0
 
     for idx in tqdm(test_indices, desc="Validating molecules"):
-        molecule = molecules[idx]
-        mpfit_charges = charges_dict['mpfit'][idx]
+        mol_data = molecule_data_list[idx]
+        mpfit_charges = mol_data.target_charges
 
         # Predict charges with GNN
-        gnn_charges = predict_charges(model, molecule, mpfit_charges, device=args.device)
+        gnn_charges = predict_charges(model, mol_data, device=args.device)
+
+        # Reconstruct OpenFF molecule for ESP calculation
+        from openff.toolkit import Molecule
+        from openff.units import unit
+
+        molecule = Molecule.from_smiles(mol_data.smiles, allow_undefined_stereo=True)
+        if mol_data.conformer is not None:
+            molecule.add_conformer(mol_data.conformer * unit.angstrom)
 
         # Validate ESP
         validation = validate_molecule_esp(

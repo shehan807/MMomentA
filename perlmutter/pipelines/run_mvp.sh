@@ -30,7 +30,7 @@ echo "✓ Test dataset created"
 echo ""
 
 # Step 2: Generate MPFIT charges (with caching)
-echo "Step 2/6: Computing MPFIT charges (5-8 min first run, instant if cached)..."
+echo "Step 2/6: Computing MPFIT charges (cached if previously run)..."
 
 python scripts/prepare_dataset_cached.py \
     --input data/test_smiles.pkl \
@@ -45,26 +45,26 @@ echo "✓ MPFIT charges computed"
 echo ""
 
 # Step 3: Train baseline model
-echo "Step 3/6: Training baseline model (10-15 min)..."
+echo "Step 3/6: Training baseline model (1000 epochs)..."
 conda activate "$ML_ENV"
 
 python scripts/train_spice.py \
     --dataset data/test_mpfit.h5 \
     --output-dir runs/test_baseline \
     --no-multipoles \
-    --n-epochs 100 \
+    --n-epochs 1000 \
     --device cuda
 
 echo "✓ Baseline trained"
 echo ""
 
 # Step 4: Train multipole model
-echo "Step 4/6: Training multipole model (10-15 min)..."
+echo "Step 4/6: Training multipole model (1000 epochs)..."
 
 python scripts/train_spice.py \
     --dataset data/test_mpfit.h5 \
     --output-dir runs/test_multipoles \
-    --n-epochs 100 \
+    --n-epochs 1000 \
     --device cuda
 
 echo "✓ Multipole model trained"
@@ -106,7 +106,6 @@ echo ""
 
 # Step 6: ESP Validation
 echo "Step 6/6: Validating ESP reproduction (MPFIT vs MMomentA-GNN)..."
-echo "This may take 10-15 minutes for 20 molecules..."
 conda activate "$DATA_ENV"
 echo ""
 
@@ -117,7 +116,7 @@ python scripts/validate_esp_comparison.py \
     --n-molecules 20 \
     --qm-method hf \
     --qm-basis "6-31G*" \
-    --device cuda
+    --device cpu
 
 echo ""
 echo "================================================"

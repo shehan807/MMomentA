@@ -58,6 +58,15 @@ echo "Installing utilities..."
 conda install -c conda-forge tqdm joblib -y
 
 echo ""
+echo "Installing PyTorch (CPU-only, for ESP validation with GNN models)..."
+echo "Using pip to avoid Intel VTune symbol conflicts..."
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+echo ""
+echo "Installing DGL (CPU-only, for graph neural networks)..."
+conda install -c dglteam "dgl<2.0" -y
+
+echo ""
 echo "Installing MMomentA package..."
 cd "${MMOMENTA_DIR:-$(dirname $(dirname $(dirname ${BASH_SOURCE[0]})))}"
 pip install -e .
@@ -99,7 +108,20 @@ try:
 except ImportError as e:
     print(f"✗ HDF5 not available: {e}")
 
+try:
+    import torch
+    print(f"✓ PyTorch {torch.__version__} installed (CPU-only)")
+except ImportError as e:
+    print(f"✗ PyTorch not available: {e}")
+
+try:
+    import dgl
+    print(f"✓ DGL {dgl.__version__} installed (CPU-only)")
+except ImportError as e:
+    print(f"✗ DGL not available: {e}")
+
 print("\n✓ mmomenta-data environment ready!")
+print("  This environment can now run ESP validation with GNN models!")
 EOF
 
 echo ""

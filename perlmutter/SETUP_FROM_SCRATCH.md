@@ -217,6 +217,64 @@ After successful MVP run:
 1. Check results in `runs/test_{baseline,multipoles}/`
 2. View ESP validation: `figures/esp_validation_mpfit_vs_gnn.png`
 3. Scale up to larger datasets (SPICE, ZINC)
-4. Run full scientific analyses
+
+### SPICE Pipeline (100 molecules)
+
+```bash
+bash perlmutter/pipelines/run_spice.sh
+```
+
+**What it does**:
+1. Extracts 100 molecules from SPICE-2.0.1.hdf5
+2. Computes MPFIT charges (5-8 min with caching)
+3. Trains baseline model (no multipoles)
+4. Trains multipole model
+5. Compares baseline vs multipole performance
+6. **ESP validation**: Compares RESP vs AM1-BCC vs MPFIT vs MMomentA-GNN
+
+**Total time**: ~1-1.5 hours
+
+**Results**:
+- Training: `runs/spice_{baseline,multipoles}/`
+- ESP comparison: `figures/spice_esp_comparison/esp_comparison_violin.png`
+
+### ZINC Pipeline (100 molecules + Transfer Learning)
+
+**Prerequisites**: Run SPICE pipeline first (needs pretrained model)
+
+```bash
+bash perlmutter/pipelines/run_zinc.sh
+```
+
+**What it does**:
+1. Downloads ZINC fragments dataset
+2. Converts 100 SMILES to molecules
+3. Computes MPFIT charges (5-8 min with caching)
+4. Trains from scratch on ZINC
+5. Fine-tunes SPICE model on ZINC (transfer learning)
+6. Compares transfer vs from-scratch performance
+7. **ESP validation**: Compares RESP vs AM1-BCC vs MPFIT vs MMomentA-GNN
+
+**Total time**: ~1-1.5 hours
+
+**Results**:
+- From scratch: `runs/zinc_from_scratch/`
+- Transfer learning: `runs/zinc_transfer/`
+- ESP comparison: `figures/zinc_esp_comparison/esp_comparison_violin.png`
+
+### Complete Scientific Workflow
+
+```bash
+# Step 1: MVP (150 test molecules)
+bash perlmutter/pipelines/run_mvp.sh
+
+# Step 2: SPICE (100 molecules from SPICE dataset)
+bash perlmutter/pipelines/run_spice.sh
+
+# Step 3: ZINC (100 molecules + transfer learning)
+bash perlmutter/pipelines/run_zinc.sh
+```
+
+**Total time**: ~3-4 hours for complete workflow
 
 Enjoy your working MMomentA setup! 🎉

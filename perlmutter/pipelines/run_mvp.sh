@@ -107,6 +107,7 @@ echo ""
 # Step 6: ESP Validation
 echo "Step 6/6: Validating ESP reproduction (MPFIT vs MMomentA-GNN)..."
 echo "This may take 10-15 minutes for 20 molecules..."
+conda activate "$DATA_ENV"
 echo ""
 
 python scripts/validate_esp_comparison.py \

@@ -24,26 +24,63 @@ import h5py
 import pickle
 from openff.toolkit import Molecule
 from pathlib import Path
+import numpy as np
 
 molecules = []
 print("Extracting molecules from SPICE...")
 
 with h5py.File('data/SPICE-2.0.1.hdf5', 'r') as f:
     mol_ids = list(f.keys())[:100]
+    print(f"Found {len(f.keys())} total molecules in SPICE, extracting first 100")
 
     for i, mol_id in enumerate(mol_ids):
         try:
             grp = f[mol_id]
 
-            if 'smiles' in grp.attrs:
-                mol = Molecule.from_smiles(grp.attrs['smiles'])
-                # Use first QM conformer
-                coords = grp['conformations'][0]
-                mol.add_conformer(coords)
-                molecules.append(mol)
+            # SPICE stores SMILES as dataset, not attribute
+            smiles = None
+            if 'smiles' in grp:
+                smiles_data = grp['smiles'][()]
+                if isinstance(smiles_data, bytes):
+                    smiles = smiles_data.decode('utf-8')
+                else:
+                    smiles = str(smiles_data)
+            elif 'smiles' in grp.attrs:
+                smiles = grp.attrs['smiles']
+                if isinstance(smiles, bytes):
+                    smiles = smiles.decode('utf-8')
 
-                if (i + 1) % 20 == 0:
-                    print(f"  Extracted {i + 1}/{len(mol_ids)} molecules")
+            if not smiles:
+                print(f"  ✗ No SMILES for {mol_id}")
+                continue
+
+            # Create molecule from SMILES
+            mol = Molecule.from_smiles(smiles, allow_undefined_stereo=True)
+
+            # Get conformations (should be in Angstroms in SPICE)
+            if 'conformations' in grp:
+                coords = grp['conformations'][0]  # Take first conformer
+            elif 'geometry' in grp:
+                coords = grp['geometry'][0]
+            else:
+                print(f"  ✗ No coordinates for {mol_id}")
+                continue
+
+            # Convert to numpy array and ensure correct shape
+            coords = np.array(coords, dtype=float)
+            if coords.shape[0] != mol.n_atoms:
+                print(f"  ✗ Coordinate mismatch for {mol_id}: {coords.shape[0]} coords vs {mol.n_atoms} atoms")
+                continue
+
+            # Add conformer (OpenFF expects Quantity with units)
+            from openff.units import unit
+            mol.add_conformer(coords * unit.angstrom)
+
+            molecules.append(mol)
+
+            if (i + 1) % 20 == 0:
+                print(f"  Extracted {i + 1}/{len(mol_ids)} molecules")
+
         except Exception as e:
             print(f"  ✗ Failed on {mol_id}: {e}")
             continue
@@ -124,16 +161,20 @@ baseline = load_results(f'{MMOMENTA_DIR}/runs/spice_baseline/training_results.js
 multipoles = load_results(f'{MMOMENTA_DIR}/runs/spice_multipoles/training_results.json')
 
 if baseline and multipoles:
+    # Extract metrics from nested structure
+    baseline_test = baseline['results']['test_metrics']
+    multipole_test = multipoles['results']['test_metrics']
+
     print("Baseline Model (no multipoles):")
-    print(f"  Test RMSE: {baseline['test_rmse']:.4f}")
-    print(f"  Test MAE:  {baseline['test_mae']:.4f}")
+    print(f"  Test RMSE: {baseline_test['val_rmse']:.4f}")
+    print(f"  Test MAE:  {baseline_test['val_mae']:.4f}")
 
     print("\nMultipole Model:")
-    print(f"  Test RMSE: {multipoles['test_rmse']:.4f}")
-    print(f"  Test MAE:  {multipoles['test_mae']:.4f}")
+    print(f"  Test RMSE: {multipole_test['val_rmse']:.4f}")
+    print(f"  Test MAE:  {multipole_test['val_mae']:.4f}")
 
-    improvement = ((baseline['test_rmse'] - multipoles['test_rmse']) /
-                   baseline['test_rmse'] * 100)
+    improvement = ((baseline_test['val_rmse'] - multipole_test['val_rmse']) /
+                   baseline_test['val_rmse'] * 100)
 
     print(f"\nImprovement: {improvement:+.1f}%")
 

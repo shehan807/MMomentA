@@ -194,21 +194,27 @@ if not multipole_results_file.exists():
 baseline_results = json.load(open(baseline_results_file))
 multipole_results = json.load(open(multipole_results_file))
 
+# Extract metrics from nested structure
+baseline_test = baseline_results['results']['test_metrics']
+multipole_test = multipole_results['results']['test_metrics']
+baseline_best_val = baseline_results['results']['best_val_rmse']
+multipole_best_val = multipole_results['results']['best_val_rmse']
+
 print("\n" + "="*70)
 print("RESULTS COMPARISON")
 print("="*70)
 print("\nBaseline Model (no multipoles):")
-print(f"  Test RMSE: {baseline_results['test_rmse']:.4f}")
-print(f"  Test MAE:  {baseline_results['test_mae']:.4f}")
-print(f"  Best Val RMSE: {baseline_results['best_val_rmse']:.4f}")
+print(f"  Test RMSE: {baseline_test['val_rmse']:.4f}")
+print(f"  Test MAE:  {baseline_test['val_mae']:.4f}")
+print(f"  Best Val RMSE: {baseline_best_val:.4f}")
 
 print("\nMultipole Model:")
-print(f"  Test RMSE: {multipole_results['test_rmse']:.4f}")
-print(f"  Test MAE:  {multipole_results['test_mae']:.4f}")
-print(f"  Best Val RMSE: {multipole_results['best_val_rmse']:.4f}")
+print(f"  Test RMSE: {multipole_test['val_rmse']:.4f}")
+print(f"  Test MAE:  {multipole_test['val_mae']:.4f}")
+print(f"  Best Val RMSE: {multipole_best_val:.4f}")
 
-improvement = ((baseline_results['test_rmse'] - multipole_results['test_rmse']) /
-               baseline_results['test_rmse'] * 100)
+improvement = ((baseline_test['val_rmse'] - multipole_test['val_rmse']) /
+               baseline_test['val_rmse'] * 100)
 
 print(f"\nImprovement: {improvement:+.1f}%")
 

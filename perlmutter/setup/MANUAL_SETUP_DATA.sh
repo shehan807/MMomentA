@@ -34,8 +34,8 @@ echo "Activating environment..."
 conda activate "$ENV_PATH"
 
 echo ""
-echo "Installing Psi4 (QM engine)..."
-conda install -c conda-forge psi4 -y
+echo "Installing Psi4 and PyGDMA (QM engine and MPFIT support)..."
+conda install -c conda-forge -c psi4 -y psi4 pygdma
 
 echo ""
 echo "Installing OpenFF toolkit..."

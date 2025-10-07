@@ -236,8 +236,10 @@ def compute_am1bcc_charges(molecule: Molecule) -> np.ndarray:
 def compute_resp_charges(molecule: Molecule, qm_method: str = 'hf',
                         qm_basis: str = '6-31G*', conformer_idx: int = 0) -> np.ndarray:
     """Compute RESP charges for a molecule."""
-    calculator = RESPCalculator(qc_method=qm_method, qc_basis=qm_basis)
-    result = calculator.compute(molecule, conformer_idx=conformer_idx)
+    from MMomentA.qm.resp import ESPConfig
+    config = ESPConfig(method=qm_method, basis=qm_basis)
+    calculator = RESPCalculator(config=config)
+    result = calculator.compute(molecule)
     if result.success:
         return result.charges
     else:
@@ -375,27 +377,13 @@ def main():
         if mol_data.conformer is not None:
             molecule.add_conformer(mol_data.conformer * unit.angstrom)
 
-        # Compute AM1-BCC and RESP charges
-        try:
-            am1bcc_charges = compute_am1bcc_charges(molecule)
-        except Exception as e:
-            logger.warning(f"AM1-BCC failed for molecule {idx}: {e}")
-            am1bcc_charges = None
-
-        try:
-            resp_charges = compute_resp_charges(molecule, qm_method=args.qm_method,
-                                               qm_basis=args.qm_basis, conformer_idx=0)
-        except Exception as e:
-            logger.warning(f"RESP failed for molecule {idx}: {e}")
-            resp_charges = None
-
-        # Validate ESP
+        # Validate ESP (AM1-BCC and RESP computed inside validate_molecule_esp)
         validation = validate_molecule_esp(
             molecule, mpfit_charges, gnn_charges,
-            am1bcc_charges=am1bcc_charges,
-            resp_charges=resp_charges,
             qm_method=args.qm_method,
-            qm_basis=args.qm_basis
+            qm_basis=args.qm_basis,
+            include_am1bcc=True,
+            include_resp=True
         )
 
         if validation['success']:

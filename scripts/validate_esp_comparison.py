@@ -235,9 +235,13 @@ def compute_am1bcc_charges(molecule: Molecule) -> np.ndarray:
 
 def compute_resp_charges(molecule: Molecule, qm_method: str = 'hf',
                         qm_basis: str = '6-31G*', conformer_idx: int = 0) -> np.ndarray:
-    """Compute RESP charges for a molecule."""
+    """Compute RESP charges for a molecule.
+
+    Note: Uses minimize=False since molecules already have MPFIT-optimized geometries.
+    This avoids convergence failures on difficult molecules.
+    """
     from MMomentA.qm.resp import ESPConfig
-    config = ESPConfig(method=qm_method, basis=qm_basis)
+    config = ESPConfig(method=qm_method, basis=qm_basis, minimize=False)
     calculator = RESPCalculator(config=config)
     result = calculator.compute(molecule)
     if result.success:

@@ -10,6 +10,14 @@ echo ""
 # Load conda module (Perlmutter-specific)
 module load conda
 
+# Configure conda to use SCRATCH for packages and cache
+export CONDA_PKGS_DIRS="$SCRATCH/.conda/pkgs"
+export CONDA_ENVS_DIRS="$SCRATCH/conda-envs"
+
+# Create directories if they don't exist
+mkdir -p "$CONDA_PKGS_DIRS"
+mkdir -p "$CONDA_ENVS_DIRS"
+
 # Perlmutter uses CUDA 12.x, check available modules
 echo "Checking available CUDA modules..."
 module avail cuda 2>&1 | grep -i cuda || echo "No CUDA modules found via 'module avail'"
@@ -18,6 +26,8 @@ module avail cuda 2>&1 | grep -i cuda || echo "No CUDA modules found via 'module
 ENV_PATH="$SCRATCH/conda-envs/mmomenta-ml"
 
 echo ""
+echo "Conda package cache: $CONDA_PKGS_DIRS"
+echo "Conda environments: $CONDA_ENVS_DIRS"
 echo "Creating environment at: $ENV_PATH"
 echo ""
 

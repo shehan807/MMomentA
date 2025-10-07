@@ -10,9 +10,19 @@ echo ""
 # Load conda module (Perlmutter-specific)
 module load conda
 
+# Configure conda to use SCRATCH for packages and cache
+export CONDA_PKGS_DIRS="$SCRATCH/.conda/pkgs"
+export CONDA_ENVS_DIRS="$SCRATCH/conda-envs"
+
+# Create directories if they don't exist
+mkdir -p "$CONDA_PKGS_DIRS"
+mkdir -p "$CONDA_ENVS_DIRS"
+
 # Set environment path in SCRATCH
 ENV_PATH="$SCRATCH/conda-envs/mmomenta-data"
 
+echo "Conda package cache: $CONDA_PKGS_DIRS"
+echo "Conda environments: $CONDA_ENVS_DIRS"
 echo "Creating environment at: $ENV_PATH"
 echo ""
 

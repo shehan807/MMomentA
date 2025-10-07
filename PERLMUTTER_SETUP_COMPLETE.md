@@ -26,22 +26,22 @@ bash perlmutter/setup/FIX_PINT_ERROR.sh
 
 This downgrades pint to <0.24 in the ML environment.
 
-### Issue 2: Missing torchdata ⚠️ REQUIRED
+### Issue 2: DGL 2.x Requires Deprecated torchdata ⚠️ REQUIRED
 
 **Error**:
 ```
 ModuleNotFoundError: No module named 'torchdata'
 ```
 
-**Cause**: DGL (Deep Graph Library) requires torchdata but it wasn't installed
+**Cause**: DGL 2.0+ requires torchdata (deprecated by PyTorch), conflicts with modern PyTorch 2.5+
 
-**Fix**: Run the fix script
+**Fix**: Downgrade to DGL 1.1.x (stable, no torchdata needed)
 ```bash
 cd /global/homes/p/parmar/MoML/MMomentA
-bash perlmutter/setup/FIX_TORCHDATA.sh
+bash perlmutter/setup/FIX_DGL_VERSION.sh
 ```
 
-This installs torchdata via pip in the ML environment.
+This downgrades DGL to 1.1.x which has all features MMomentA needs without torchdata.
 
 ### Issue 3: MMomentA Not Installed ⚠️ REQUIRED
 
@@ -77,8 +77,8 @@ cd /global/homes/p/parmar/MoML/MMomentA
 # Fix 1: Pint version
 bash perlmutter/setup/FIX_PINT_ERROR.sh
 
-# Fix 2: torchdata dependency
-bash perlmutter/setup/FIX_TORCHDATA.sh
+# Fix 2: DGL version (avoid torchdata)
+bash perlmutter/setup/FIX_DGL_VERSION.sh
 
 # Fix 3: Install MMomentA
 module load conda

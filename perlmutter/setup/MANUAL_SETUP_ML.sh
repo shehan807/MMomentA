@@ -68,20 +68,21 @@ else
 fi
 
 echo ""
-echo "Installing torchdata (required by DGL)..."
-pip install torchdata
-
-echo ""
 echo "Installing DGL (Deep Graph Library)..."
+echo "Note: Using DGL <2.0 to avoid torchdata dependency"
 if [[ "$DGL_CHANNEL" != "cpu" ]]; then
-    conda install -c dglteam/label/$DGL_CHANNEL dgl -y
+    conda install -c dglteam/label/$DGL_CHANNEL "dgl<2.0" -y
 else
-    conda install -c dglteam dgl -y
+    conda install -c dglteam "dgl<2.0" -y
 fi
 
 echo ""
 echo "Installing OpenFF toolkit (for molecule handling)..."
 conda install -c conda-forge openff-toolkit -y
+
+echo ""
+echo "Fixing pint version (openff-units compatibility)..."
+pip install "pint<0.24"
 
 echo ""
 echo "Installing scientific computing packages..."
@@ -98,6 +99,11 @@ pip install lovelyplots
 echo ""
 echo "Installing utilities..."
 conda install -c conda-forge tqdm joblib -y
+
+echo ""
+echo "Installing MMomentA package..."
+cd "${MMOMENTA_DIR:-$(dirname $(dirname $(dirname ${BASH_SOURCE[0]})))}"
+pip install -e .
 
 echo ""
 echo "================================================"

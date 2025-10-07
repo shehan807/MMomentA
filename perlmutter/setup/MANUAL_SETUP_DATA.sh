@@ -58,6 +58,11 @@ echo "Installing utilities..."
 conda install -c conda-forge tqdm joblib -y
 
 echo ""
+echo "Installing MMomentA package..."
+cd "${MMOMENTA_DIR:-$(dirname $(dirname $(dirname ${BASH_SOURCE[0]})))}"
+pip install -e .
+
+echo ""
 echo "================================================"
 echo "Environment created successfully!"
 echo "================================================"

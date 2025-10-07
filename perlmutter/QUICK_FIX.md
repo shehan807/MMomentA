@@ -15,9 +15,10 @@
 **Fix**: Downgrade pint to <0.24
 **Status**: ⚠️ NEEDS TO BE RUN
 
-### Issue 4: Missing torchdata (DGL Dependency)
+### Issue 4: DGL 2.x Requires Deprecated torchdata
 **Error**: `ModuleNotFoundError: No module named 'torchdata'`
-**Fix**: Install torchdata via pip
+**Root Cause**: DGL 2.0+ requires torchdata (deprecated), conflicts with PyTorch 2.5+
+**Fix**: Downgrade to DGL 1.1.x (stable, no torchdata needed)
 **Status**: ⚠️ NEEDS TO BE RUN
 
 ## Quick Fix Steps
@@ -33,16 +34,16 @@ bash perlmutter/setup/FIX_PINT_ERROR.sh
 
 This downgrades pint to <0.24 which is compatible with openff-units.
 
-### 2. Fix Missing torchdata (ML Environment)
+### 2. Fix DGL Version (ML Environment)
 
 ```bash
 cd /global/homes/p/parmar/MoML/MMomentA
 
 # Run the fix script
-bash perlmutter/setup/FIX_TORCHDATA.sh
+bash perlmutter/setup/FIX_DGL_VERSION.sh
 ```
 
-This installs `torchdata` which is required by DGL (Deep Graph Library).
+This downgrades DGL to 1.1.x which doesn't require torchdata (deprecated package).
 
 ### 3. Install MMomentA Package
 

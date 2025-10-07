@@ -374,8 +374,19 @@ def main():
         from openff.units import unit
 
         molecule = Molecule.from_smiles(mol_data.smiles, allow_undefined_stereo=True)
-        if mol_data.conformer is not None:
-            molecule.add_conformer(mol_data.conformer * unit.angstrom)
+
+        # CRITICAL: Ensure molecule has conformer for AM1-BCC/RESP
+        if not molecule.conformers:
+            if mol_data.conformer is not None:
+                # Use MPFIT-optimized conformer from dataset
+                molecule.add_conformer(mol_data.conformer * unit.angstrom)
+            else:
+                # Fallback: generate conformer
+                logger.warning(f"Generating conformer for molecule {idx}")
+                molecule.generate_conformers(n_conformers=1)
+        elif mol_data.conformer is not None:
+            # Replace with MPFIT-optimized conformer (preferred)
+            molecule.conformers[0] = mol_data.conformer * unit.angstrom
 
         # Validate ESP (AM1-BCC and RESP computed inside validate_molecule_esp)
         validation = validate_molecule_esp(

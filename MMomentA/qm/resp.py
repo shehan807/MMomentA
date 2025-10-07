@@ -107,34 +107,57 @@ class RESPCalculator:
                 error_message="Molecule has no conformers"
             )
 
-        [input_conformer] = extract_conformers(molecule)
+        try:
+            [input_conformer] = extract_conformers(molecule)
 
-        conformer, grid, esp, electric_field = Psi4ESPGenerator.generate(
-            molecule, input_conformer, self.qc_settings, minimize=self.config.minimize
-        )
+            conformer, grid, esp, electric_field = Psi4ESPGenerator.generate(
+                molecule, input_conformer, self.qc_settings, minimize=self.config.minimize
+            )
 
-        qc_record = MoleculeESPRecord.from_molecule(
-            molecule, conformer, grid, esp, None, self.qc_settings
-        )
+            qc_record = MoleculeESPRecord.from_molecule(
+                molecule, conformer, grid, esp, None, self.qc_settings
+            )
 
-        charge_parameter = generate_resp_charge_parameter([qc_record], self.solver)
+            charge_parameter = generate_resp_charge_parameter([qc_record], self.solver)
 
-        charges = LibraryChargeGenerator.generate(
-            molecule, LibraryChargeCollection(parameters=[charge_parameter])
-        )
+            charges = LibraryChargeGenerator.generate(
+                molecule, LibraryChargeCollection(parameters=[charge_parameter])
+            )
 
-        elapsed = time.time() - start_time
+            elapsed = time.time() - start_time
 
-        return RESPResult(
-            charges=charges.flatten(),
-            esp_record=qc_record,
-            conformer=conformer,
-            time_seconds=elapsed,
-            smiles=charge_parameter.smiles,
-            metadata=self._get_metadata(),
-            success=True,
-            error_message=None
-        )
+            return RESPResult(
+                charges=charges.flatten(),
+                esp_record=qc_record,
+                conformer=conformer,
+                time_seconds=elapsed,
+                smiles=charge_parameter.smiles,
+                metadata=self._get_metadata(),
+                success=True,
+                error_message=None
+            )
+
+        except Exception as e:
+            elapsed = time.time() - start_time
+            error_msg = str(e)
+
+            # Get conformer for error result
+            conformer_array = (
+                molecule.conformers[0].m_as(unit.angstrom)
+                if molecule.conformers
+                else np.zeros((molecule.n_atoms, 3))
+            )
+
+            return RESPResult(
+                charges=np.zeros(molecule.n_atoms),
+                esp_record=None,
+                conformer=conformer_array,
+                time_seconds=elapsed,
+                smiles=smiles,
+                metadata={**self._get_metadata(), "error": error_msg},
+                success=False,
+                error_message=f"RESP calculation failed: {error_msg}"
+            )
 
     def _get_metadata(self) -> Dict[str, Any]:
         """Get metadata dictionary for calculation settings."""

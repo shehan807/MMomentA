@@ -187,21 +187,36 @@ class BatchProcessor:
 
             for method_name, calculator in self.calculators.items():
                 logger.debug(f"[Process {pid}] Running {method_name} on molecule {mol_idx}")
-                result = calculator.compute(molecule)
 
-                if result.success:
-                    results[method_name] = self._serialize_result(result)
-                    logger.debug(
-                        f"[Process {pid}] {method_name} succeeded in {result.time_seconds:.2f}s"
-                    )
-                else:
+                try:
+                    result = calculator.compute(molecule)
+
+                    if result.success:
+                        results[method_name] = self._serialize_result(result)
+                        logger.debug(
+                            f"[Process {pid}] {method_name} succeeded in {result.time_seconds:.2f}s"
+                        )
+                    else:
+                        failed_methods.append(method_name)
+                        # Convert error_message to string to avoid pickling issues
+                        error_msg = str(result.error_message) if result.error_message else "Unknown error"
+                        logger.warning(
+                            f"[Process {pid}] {method_name} failed: {error_msg}"
+                        )
+                        results[method_name] = {
+                            "error": error_msg,
+                            "time": result.time_seconds
+                        }
+                except Exception as e:
+                    # Catch any exceptions and convert to string to avoid pickling issues
                     failed_methods.append(method_name)
+                    error_msg = f"{type(e).__name__}: {str(e)}"
                     logger.warning(
-                        f"[Process {pid}] {method_name} failed: {result.error_message}"
+                        f"[Process {pid}] {method_name} raised exception: {error_msg}"
                     )
                     results[method_name] = {
-                        "error": result.error_message,
-                        "time": result.time_seconds
+                        "error": error_msg,
+                        "time": 0.0
                     }
 
             os.chdir(original_cwd)

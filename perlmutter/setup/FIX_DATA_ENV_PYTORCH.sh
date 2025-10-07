@@ -25,9 +25,14 @@ echo "Installing DGL (CPU-only)..."
 conda install -c dglteam "dgl<2.0" -y
 
 echo ""
+echo "Installing lovelyplots (publication figures)..."
+pip install lovelyplots
+
+echo ""
 echo "Verifying installation..."
 python -c "import torch; print(f'✓ PyTorch {torch.__version__} (CPU)')"
 python -c "import dgl; print(f'✓ DGL {dgl.__version__} (CPU)')"
+python -c "import lovelyplots; print(f'✓ lovelyplots installed')"
 
 echo ""
 echo "================================================"

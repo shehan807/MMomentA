@@ -148,15 +148,25 @@ def compute_qm_esp_psi4(molecule: Molecule, grid_points: np.ndarray,
 
 def calculate_esp_from_charges(coordinates: np.ndarray, charges: np.ndarray,
                                grid_points: np.ndarray) -> np.ndarray:
-    """Calculate ESP at grid points from atomic charges."""
+    """Calculate ESP at grid points from atomic charges.
 
+    Args:
+        coordinates: Atomic coordinates in Angstroms
+        charges: Atomic partial charges in elementary charge units
+        grid_points: ESP grid points in Angstroms
+
+    Returns:
+        ESP values in atomic units (hartree/e)
+    """
     esp_values = np.zeros(len(grid_points))
 
     for i, point in enumerate(grid_points):
         for coord, charge in zip(coordinates, charges):
-            distance = np.linalg.norm(point - coord)
-            if distance > 1e-6:
-                esp_values[i] += charge / distance * BOHR_TO_ANGSTROM
+            distance_angstrom = np.linalg.norm(point - coord)
+            if distance_angstrom > 1e-6:
+                # Convert distance to bohr, then ESP = charge / distance_bohr
+                distance_bohr = distance_angstrom / BOHR_TO_ANGSTROM
+                esp_values[i] += charge / distance_bohr
 
     return esp_values
 

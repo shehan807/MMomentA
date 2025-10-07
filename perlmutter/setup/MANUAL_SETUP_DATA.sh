@@ -67,6 +67,10 @@ echo "Installing DGL (CPU-only, for graph neural networks)..."
 conda install -c dglteam "dgl<2.0" -y
 
 echo ""
+echo "Installing lovelyplots (publication-quality figures)..."
+pip install lovelyplots
+
+echo ""
 echo "Installing MMomentA package..."
 cd "${MMOMENTA_DIR:-$(dirname $(dirname $(dirname ${BASH_SOURCE[0]})))}"
 pip install -e .

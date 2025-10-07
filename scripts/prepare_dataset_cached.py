@@ -113,9 +113,18 @@ def filter_new_molecules(
     new_molecules = []
     new_indices = []
 
+    # Canonicalize cached SMILES using OpenFF
+    canonical_cached = set()
+    for smiles in cached_smiles:
+        try:
+            mol = Molecule.from_smiles(smiles, allow_undefined_stereo=True)
+            canonical_cached.add(mol.to_smiles(mapped=False))
+        except:
+            canonical_cached.add(smiles)  # Keep original if parsing fails
+
     for i, mol in enumerate(molecules):
         smiles = mol.to_smiles(mapped=False)
-        if smiles not in cached_smiles:
+        if smiles not in canonical_cached:
             new_molecules.append(mol)
             new_indices.append(i)
 

@@ -29,17 +29,17 @@ python scripts/create_test_smiles.py
 echo "✓ Test dataset created"
 echo ""
 
-# Step 2: Generate MPFIT charges
-echo "Step 2/6: Computing MPFIT charges (20-30 min)..."
+# Step 2: Generate MPFIT charges (with caching)
+echo "Step 2/6: Computing MPFIT charges (5-8 min first run, instant if cached)..."
 
-python scripts/prepare_dataset.py \
+python scripts/prepare_dataset_cached.py \
     --input data/test_smiles.pkl \
     --output data/test_mpfit.h5 \
     --split-strategy random \
     --train-frac 0.7 \
     --val-frac 0.15 \
     --test-frac 0.15 \
-    --n-jobs 1
+    --n-jobs 16
 
 echo "✓ MPFIT charges computed"
 echo ""

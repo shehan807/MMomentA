@@ -1,6 +1,6 @@
 # Quick Fix for Perlmutter Issues
 
-## Three Issues to Fix
+## Four Issues to Fix
 
 ### Issue 1: Psi4 Pickle Error
 **Temporary Workaround**: Use sequential processing (no parallel)
@@ -13,6 +13,11 @@
 ### Issue 3: Pint Version Incompatibility in ML Environment
 **Error**: `TypeError: cannot inherit frozen dataclass from a non-frozen one`
 **Fix**: Downgrade pint to <0.24
+**Status**: ⚠️ NEEDS TO BE RUN
+
+### Issue 4: Missing torchdata (DGL Dependency)
+**Error**: `ModuleNotFoundError: No module named 'torchdata'`
+**Fix**: Install torchdata via pip
 **Status**: ⚠️ NEEDS TO BE RUN
 
 ## Quick Fix Steps
@@ -28,7 +33,18 @@ bash perlmutter/setup/FIX_PINT_ERROR.sh
 
 This downgrades pint to <0.24 which is compatible with openff-units.
 
-### 2. Install MMomentA Package
+### 2. Fix Missing torchdata (ML Environment)
+
+```bash
+cd /global/homes/p/parmar/MoML/MMomentA
+
+# Run the fix script
+bash perlmutter/setup/FIX_TORCHDATA.sh
+```
+
+This installs `torchdata` which is required by DGL (Deep Graph Library).
+
+### 3. Install MMomentA Package
 
 ```bash
 cd /global/homes/p/parmar/MoML/MMomentA
@@ -43,9 +59,9 @@ conda activate $SCRATCH/conda-envs/mmomenta-ml
 pip install -e .
 ```
 
-### 3. Use Updated Pipeline
+### 4. Use Updated Pipeline
 
-The pipeline now uses `--n-jobs 1` to avoid pickle issues:
+The pipeline now uses `--n-jobs 16` for parallel processing with smart caching:
 
 ```bash
 bash perlmutter/pipelines/run_mvp.sh

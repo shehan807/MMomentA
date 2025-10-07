@@ -26,7 +26,24 @@ bash perlmutter/setup/FIX_PINT_ERROR.sh
 
 This downgrades pint to <0.24 in the ML environment.
 
-### Issue 2: MMomentA Not Installed ⚠️ REQUIRED
+### Issue 2: Missing torchdata ⚠️ REQUIRED
+
+**Error**:
+```
+ModuleNotFoundError: No module named 'torchdata'
+```
+
+**Cause**: DGL (Deep Graph Library) requires torchdata but it wasn't installed
+
+**Fix**: Run the fix script
+```bash
+cd /global/homes/p/parmar/MoML/MMomentA
+bash perlmutter/setup/FIX_TORCHDATA.sh
+```
+
+This installs torchdata via pip in the ML environment.
+
+### Issue 3: MMomentA Not Installed ⚠️ REQUIRED
 
 **Error**: Training scripts can't import MMomentA modules
 
@@ -44,7 +61,7 @@ conda activate $SCRATCH/conda-envs/mmomenta-ml
 pip install -e .
 ```
 
-### Issue 3: GDMA Missing ✅ FIXED
+### Issue 4: GDMA Missing ✅ FIXED
 
 **Was**: `ModuleNotFoundError: Python module gdma not found`
 
@@ -57,10 +74,13 @@ pip install -e .
 ```bash
 cd /global/homes/p/parmar/MoML/MMomentA
 
-# Fix pint version
+# Fix 1: Pint version
 bash perlmutter/setup/FIX_PINT_ERROR.sh
 
-# Install MMomentA
+# Fix 2: torchdata dependency
+bash perlmutter/setup/FIX_TORCHDATA.sh
+
+# Fix 3: Install MMomentA
 module load conda
 conda activate $SCRATCH/conda-envs/mmomenta-data
 pip install -e .

@@ -68,6 +68,10 @@ else
 fi
 
 echo ""
+echo "Installing torchdata (required by DGL)..."
+pip install torchdata
+
+echo ""
 echo "Installing DGL (Deep Graph Library)..."
 if [[ "$DGL_CHANNEL" != "cpu" ]]; then
     conda install -c dglteam/label/$DGL_CHANNEL dgl -y

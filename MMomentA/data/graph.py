@@ -14,7 +14,8 @@ from .schema import MoleculeData
 def molecule_data_to_dgl_graph(
     mol_data: MoleculeData,
     include_multipoles: bool = True,
-    use_conformer: bool = False
+    use_conformer: bool = False,
+    multipole_stats: Optional[dict] = None
 ):
     """Convert MoleculeData to DGL graph.
 
@@ -63,6 +64,13 @@ def molecule_data_to_dgl_graph(
         multipole_features = torch.tensor(
             mol_data.multipole_moments, dtype=torch.float32
         )
+
+        # Standardize multipole features if stats provided
+        if multipole_stats is not None:
+            mean = torch.tensor(multipole_stats['mean'], dtype=torch.float32)
+            std = torch.tensor(multipole_stats['std'], dtype=torch.float32)
+            multipole_features = (multipole_features - mean) / std
+
         h_v = torch.cat([h_v, atomic_fp, multipole_features], dim=-1)
     else:
         h_v = torch.cat([h_v, atomic_fp], dim=-1)

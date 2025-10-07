@@ -113,7 +113,8 @@ def compute_qm_esp_psi4(molecule: Molecule, grid_points: np.ndarray,
     })
 
     # Compute wavefunction
-    psi4.set_output_file('/dev/null', False)  # Suppress output
+    # Use tempfile instead of /dev/null (permission issues on some systems)
+    psi4.core.set_output_file('psi4_output.dat', False)
     energy, wfn = psi4.energy(qm_method, return_wfn=True, molecule=psi4_mol)
 
     # Compute ESP at grid points
@@ -379,7 +380,9 @@ def main():
 
     # Generate plots
     logger.info("\nGenerating comparison plots...")
-    from figures.plot_comparison import create_esp_violin_plot
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent / 'figures'))
+    from plot_comparison import create_esp_violin_plot
 
     plot_file = create_esp_violin_plot(results, output_dir=output_dir,
                                        qm_method=args.qm_method, qm_basis=args.qm_basis)

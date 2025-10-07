@@ -22,6 +22,9 @@ class ChargeDataset(torch.utils.data.Dataset):
         Include 3D coordinates in features
     transform : callable, optional
         Optional transform to apply to graphs
+    multipole_stats : dict, optional
+        Pre-computed multipole statistics (mean, std) for normalization.
+        If None and include_multipoles=True, will compute from this dataset.
 
     Examples
     --------
@@ -37,14 +40,34 @@ class ChargeDataset(torch.utils.data.Dataset):
         molecule_data_list: List[MoleculeData],
         include_multipoles: bool = True,
         use_conformer: bool = False,
-        transform: Optional[Callable] = None
+        transform: Optional[Callable] = None,
+        multipole_stats: Optional[dict] = None
     ):
         self.molecule_data_list = molecule_data_list
         self.include_multipoles = include_multipoles
         self.use_conformer = use_conformer
         self.transform = transform
 
+        # Compute or use provided multipole normalization statistics
+        if include_multipoles and multipole_stats is None:
+            self.multipole_stats = self._compute_multipole_stats()
+        else:
+            self.multipole_stats = multipole_stats
+
         self.graphs = self._build_graphs()
+
+    def _compute_multipole_stats(self) -> dict:
+        """Compute mean and std of multipole features for normalization."""
+        all_multipoles = []
+        for mol_data in self.molecule_data_list:
+            all_multipoles.append(mol_data.multipole_moments)
+
+        all_multipoles = np.vstack(all_multipoles)
+
+        return {
+            'mean': np.mean(all_multipoles, axis=0),
+            'std': np.std(all_multipoles, axis=0) + 1e-8  # Avoid division by zero
+        }
 
     def _build_graphs(self):
         """Build DGL graphs from molecular data."""
@@ -55,7 +78,8 @@ class ChargeDataset(torch.utils.data.Dataset):
             graph = molecule_data_to_dgl_graph(
                 mol_data,
                 include_multipoles=self.include_multipoles,
-                use_conformer=self.use_conformer
+                use_conformer=self.use_conformer,
+                multipole_stats=self.multipole_stats
             )
             graphs.append(graph)
 
@@ -211,20 +235,25 @@ def create_split_datasets(
     val_data = [molecule_data_list[i] for i in val_indices]
     test_data = [molecule_data_list[i] for i in test_indices]
 
+    # Create train dataset first to compute multipole statistics
     train_dataset = ChargeDataset(
         train_data,
         include_multipoles=include_multipoles,
         use_conformer=use_conformer
     )
+
+    # Use train multipole stats for val and test (prevent data leakage)
     val_dataset = ChargeDataset(
         val_data,
         include_multipoles=include_multipoles,
-        use_conformer=use_conformer
+        use_conformer=use_conformer,
+        multipole_stats=train_dataset.multipole_stats
     )
     test_dataset = ChargeDataset(
         test_data,
         include_multipoles=include_multipoles,
-        use_conformer=use_conformer
+        use_conformer=use_conformer,
+        multipole_stats=train_dataset.multipole_stats
     )
 
     return SplitDataset(train_dataset, val_dataset, test_dataset)

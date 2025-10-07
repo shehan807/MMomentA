@@ -41,7 +41,7 @@ def create_test_dataset():
 
     for i, smiles in enumerate(SMILES):
         try:
-            mol = Molecule.from_smiles(smiles)
+            mol = Molecule.from_smiles(smiles, allow_undefined_stereo=True)
             mol.generate_conformers(n_conformers=1)
 
             # Add molecule name for tracking

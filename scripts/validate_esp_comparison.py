@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 """
-Validate MPFIT and MMomentA-GNN charges by comparing ESP reproduction.
+Validate MPFIT, AM1-BCC, RESP, and MMomentA-GNN charges by comparing ESP reproduction.
 
 This script:
 1. Loads trained MMomentA-GNN model
 2. Loads test molecules from HDF5 dataset
 3. Computes QM ESP for each molecule using Psi4
-4. Compares ESP from MPFIT charges (ground truth)
-5. Compares ESP from MMomentA-GNN predicted charges
-6. Generates publication-quality violin plots
+4. Compares ESP from MPFIT charges
+5. Compares ESP from AM1-BCC charges
+6. Compares ESP from RESP charges
+7. Compares ESP from MMomentA-GNN predicted charges
+8. Generates publication-quality violin plots
 
 Usage:
     python scripts/validate_esp_comparison.py \\
@@ -39,6 +41,8 @@ from MMomentA.data.dataset import ChargeDataset
 from MMomentA.data.graph import molecule_data_to_dgl_graph
 from MMomentA.data.schema import MoleculeData
 from MMomentA.models import ChargeModel, ModelConfig
+from MMomentA.qm.am1bcc import AM1BCCCalculator
+from MMomentA.qm.resp import RESPCalculator
 from esp_utils import compare_grid_esp
 
 logging.basicConfig(level=logging.INFO)
@@ -219,10 +223,32 @@ def predict_charges(model: ChargeModel, mol_data: MoleculeData,
     return predicted_charges
 
 
+def compute_am1bcc_charges(molecule: Molecule) -> np.ndarray:
+    """Compute AM1-BCC charges for a molecule."""
+    calculator = AM1BCCCalculator()
+    result = calculator.compute(molecule)
+    if result.success:
+        return result.charges
+    else:
+        raise ValueError(f"AM1-BCC failed: {result.error_message}")
+
+
+def compute_resp_charges(molecule: Molecule, qm_method: str = 'hf',
+                        qm_basis: str = '6-31G*', conformer_idx: int = 0) -> np.ndarray:
+    """Compute RESP charges for a molecule."""
+    calculator = RESPCalculator(qc_method=qm_method, qc_basis=qm_basis)
+    result = calculator.compute(molecule, conformer_idx=conformer_idx)
+    if result.success:
+        return result.charges
+    else:
+        raise ValueError(f"RESP failed: {result.error_message}")
+
+
 def validate_molecule_esp(molecule: Molecule, mpfit_charges: np.ndarray,
                           gnn_charges: np.ndarray, qm_method: str = 'hf',
-                          qm_basis: str = '6-31G*', conformer_idx: int = 0) -> Dict:
-    """Validate ESP reproduction for both MPFIT and GNN charges."""
+                          qm_basis: str = '6-31G*', conformer_idx: int = 0,
+                          include_am1bcc: bool = True, include_resp: bool = True) -> Dict:
+    """Validate ESP reproduction for MPFIT, AM1-BCC, RESP, and GNN charges."""
 
     try:
         # Generate ESP grid
@@ -237,20 +263,40 @@ def validate_molecule_esp(molecule: Molecule, mpfit_charges: np.ndarray,
 
         # Calculate ESP from MPFIT charges
         mpfit_esp = calculate_esp_from_charges(coords, mpfit_charges, grid_points)
+        mpfit_metrics = compare_grid_esp(qm_esp, mpfit_esp, verbose=False)
 
         # Calculate ESP from GNN charges
         gnn_esp = calculate_esp_from_charges(coords, gnn_charges, grid_points)
-
-        # Compare
-        mpfit_metrics = compare_grid_esp(qm_esp, mpfit_esp, verbose=False)
         gnn_metrics = compare_grid_esp(qm_esp, gnn_esp, verbose=False)
 
-        return {
+        result = {
             'success': True,
             'mpfit': mpfit_metrics,
             'gnn': gnn_metrics,
             'n_grid_points': len(grid_points)
         }
+
+        # Optionally compute AM1-BCC charges and ESP
+        if include_am1bcc:
+            try:
+                am1bcc_charges = compute_am1bcc_charges(molecule)
+                am1bcc_esp = calculate_esp_from_charges(coords, am1bcc_charges, grid_points)
+                result['am1bcc'] = compare_grid_esp(qm_esp, am1bcc_esp, verbose=False)
+            except Exception as e:
+                logger.warning(f"AM1-BCC failed: {e}")
+                result['am1bcc'] = None
+
+        # Optionally compute RESP charges and ESP
+        if include_resp:
+            try:
+                resp_charges = compute_resp_charges(molecule, qm_method, qm_basis, conformer_idx)
+                resp_esp = calculate_esp_from_charges(coords, resp_charges, grid_points)
+                result['resp'] = compare_grid_esp(qm_esp, resp_esp, verbose=False)
+            except Exception as e:
+                logger.warning(f"RESP failed: {e}")
+                result['resp'] = None
+
+        return result
 
     except Exception as e:
         logger.warning(f"ESP validation failed for molecule: {e}")
@@ -306,6 +352,8 @@ def main():
     # Validate each molecule
     results = {
         'mpfit': {'mae': [], 'rmse': []},
+        'am1bcc': {'mae': [], 'rmse': []},
+        'resp': {'mae': [], 'rmse': []},
         'gnn': {'mae': [], 'rmse': []}
     }
 
@@ -327,9 +375,25 @@ def main():
         if mol_data.conformer is not None:
             molecule.add_conformer(mol_data.conformer * unit.angstrom)
 
+        # Compute AM1-BCC and RESP charges
+        try:
+            am1bcc_charges = compute_am1bcc_charges(molecule)
+        except Exception as e:
+            logger.warning(f"AM1-BCC failed for molecule {idx}: {e}")
+            am1bcc_charges = None
+
+        try:
+            resp_charges = compute_resp_charges(molecule, qm_method=args.qm_method,
+                                               qm_basis=args.qm_basis, conformer_idx=0)
+        except Exception as e:
+            logger.warning(f"RESP failed for molecule {idx}: {e}")
+            resp_charges = None
+
         # Validate ESP
         validation = validate_molecule_esp(
             molecule, mpfit_charges, gnn_charges,
+            am1bcc_charges=am1bcc_charges,
+            resp_charges=resp_charges,
             qm_method=args.qm_method,
             qm_basis=args.qm_basis
         )
@@ -337,6 +401,15 @@ def main():
         if validation['success']:
             results['mpfit']['mae'].append(validation['mpfit']['mae'])
             results['mpfit']['rmse'].append(validation['mpfit']['rmse'])
+
+            if 'am1bcc' in validation and validation['am1bcc'] is not None:
+                results['am1bcc']['mae'].append(validation['am1bcc']['mae'])
+                results['am1bcc']['rmse'].append(validation['am1bcc']['rmse'])
+
+            if 'resp' in validation and validation['resp'] is not None:
+                results['resp']['mae'].append(validation['resp']['mae'])
+                results['resp']['rmse'].append(validation['resp']['rmse'])
+
             results['gnn']['mae'].append(validation['gnn']['mae'])
             results['gnn']['rmse'].append(validation['gnn']['rmse'])
             successful += 1
@@ -354,12 +427,53 @@ def main():
     print(f"  MAE:  {np.mean(results['mpfit']['mae']):.6e} ± {np.std(results['mpfit']['mae']):.6e} a.u.")
     print(f"  RMSE: {np.mean(results['mpfit']['rmse']):.6e} ± {np.std(results['mpfit']['rmse']):.6e} a.u.")
 
+    if results['am1bcc']['mae']:
+        print("\nAM1-BCC ESP Validation:")
+        print(f"  MAE:  {np.mean(results['am1bcc']['mae']):.6e} ± {np.std(results['am1bcc']['mae']):.6e} a.u.")
+        print(f"  RMSE: {np.mean(results['am1bcc']['rmse']):.6e} ± {np.std(results['am1bcc']['rmse']):.6e} a.u.")
+
+    if results['resp']['mae']:
+        print("\nRESP ESP Validation:")
+        print(f"  MAE:  {np.mean(results['resp']['mae']):.6e} ± {np.std(results['resp']['mae']):.6e} a.u.")
+        print(f"  RMSE: {np.mean(results['resp']['rmse']):.6e} ± {np.std(results['resp']['rmse']):.6e} a.u.")
+
     print("\nMMomentA-GNN ESP Validation:")
     print(f"  MAE:  {np.mean(results['gnn']['mae']):.6e} ± {np.std(results['gnn']['mae']):.6e} a.u.")
     print(f"  RMSE: {np.mean(results['gnn']['rmse']):.6e} ± {np.std(results['gnn']['rmse']):.6e} a.u.")
 
     # Save results
     results_file = output_dir / "esp_validation_results.json"
+    summary = {
+        'mpfit': {
+            'mae_mean': float(np.mean(results['mpfit']['mae'])),
+            'mae_std': float(np.std(results['mpfit']['mae'])),
+            'rmse_mean': float(np.mean(results['mpfit']['rmse'])),
+            'rmse_std': float(np.std(results['mpfit']['rmse']))
+        },
+        'gnn': {
+            'mae_mean': float(np.mean(results['gnn']['mae'])),
+            'mae_std': float(np.std(results['gnn']['mae'])),
+            'rmse_mean': float(np.mean(results['gnn']['rmse'])),
+            'rmse_std': float(np.std(results['gnn']['rmse']))
+        }
+    }
+
+    if results['am1bcc']['mae']:
+        summary['am1bcc'] = {
+            'mae_mean': float(np.mean(results['am1bcc']['mae'])),
+            'mae_std': float(np.std(results['am1bcc']['mae'])),
+            'rmse_mean': float(np.mean(results['am1bcc']['rmse'])),
+            'rmse_std': float(np.std(results['am1bcc']['rmse']))
+        }
+
+    if results['resp']['mae']:
+        summary['resp'] = {
+            'mae_mean': float(np.mean(results['resp']['mae'])),
+            'mae_std': float(np.std(results['resp']['mae'])),
+            'rmse_mean': float(np.mean(results['resp']['rmse'])),
+            'rmse_std': float(np.std(results['resp']['rmse']))
+        }
+
     with open(results_file, 'w') as f:
         json.dump({
             'config': {
@@ -370,20 +484,7 @@ def main():
                 'qm_basis': args.qm_basis
             },
             'metrics': results,
-            'summary': {
-                'mpfit': {
-                    'mae_mean': float(np.mean(results['mpfit']['mae'])),
-                    'mae_std': float(np.std(results['mpfit']['mae'])),
-                    'rmse_mean': float(np.mean(results['mpfit']['rmse'])),
-                    'rmse_std': float(np.std(results['mpfit']['rmse']))
-                },
-                'gnn': {
-                    'mae_mean': float(np.mean(results['gnn']['mae'])),
-                    'mae_std': float(np.std(results['gnn']['mae'])),
-                    'rmse_mean': float(np.mean(results['gnn']['rmse'])),
-                    'rmse_std': float(np.std(results['gnn']['rmse']))
-                }
-            }
+            'summary': summary
         }, f, indent=2)
 
     logger.info(f"\n✓ Results saved to {results_file}")

@@ -293,15 +293,15 @@ def create_correlation_subplot_figure(results: Dict,
 
 def create_esp_violin_plot(metrics: Dict,
                           output_dir: str = ".",
-                          figsize: Tuple[float, float] = (12, 6),
+                          figsize: Tuple[float, float] = (14, 6),
                           qm_method: str = 'hf',
                           qm_basis: str = '6-31G*') -> str:
-    """Create publication-quality violin plots for ESP validation: MPFIT vs MMomentA-GNN
+    """Create publication-quality violin plots for ESP validation: MPFIT, AM1-BCC, RESP, MMomentA-GNN
 
     Parameters
     ----------
     metrics : dict
-        Dictionary with 'mpfit' and 'gnn' keys, each containing 'mae' and 'rmse' lists
+        Dictionary with 'mpfit', 'am1bcc', 'resp', and 'gnn' keys, each containing 'mae' and 'rmse' lists
     output_dir : str
         Directory to save output plot
     figsize : tuple
@@ -322,19 +322,28 @@ def create_esp_violin_plot(metrics: Dict,
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
 
-    methods = ['MPFIT', 'MPFIT-GNN']
-    method_colors = [colors['MPFIT'], colors['MPFIT-GNN']]
-    labels = ['MPFIT', 'MMomentA-GNN']
+    # Build lists of methods that actually have data
+    method_keys = ['mpfit', 'am1bcc', 'resp', 'gnn']
+    method_labels = {'mpfit': 'MPFIT', 'am1bcc': 'AM1-BCC', 'resp': 'RESP', 'gnn': 'MMomentA-GNN'}
+    color_keys = {'mpfit': 'MPFIT', 'am1bcc': 'AM1-BCC', 'resp': 'RESP', 'gnn': 'MPFIT-GNN'}
+
+    mae_data = []
+    mae_labels = []
+    mae_colors = []
+
+    for key in method_keys:
+        if key in metrics and metrics[key]['mae']:
+            mae_data.append(metrics[key]['mae'])
+            mae_labels.append(method_labels[key])
+            mae_colors.append(colors[color_keys[key]])
 
     # MAE Violin Plot
-    mae_data = [metrics['mpfit']['mae'], metrics['gnn']['mae']]
-
-    if all(mae_data):
-        parts1 = ax1.violinplot(mae_data, positions=range(len(labels)),
-                               showmeans=True, showmedians=True, widths=0.7)
+    if mae_data:
+        parts1 = ax1.violinplot(mae_data, positions=range(len(mae_labels)),
+                               showmeans=True, showmedians=True, widths=0.6)
 
         # Style the violin plots
-        for patch, color in zip(parts1['bodies'], method_colors):
+        for patch, color in zip(parts1['bodies'], mae_colors):
             patch.set_facecolor(color)
             patch.set_alpha(0.8)
             patch.set_edgecolor('white')
@@ -346,21 +355,29 @@ def create_esp_violin_plot(metrics: Dict,
                 parts1[partname].set_color('black')
                 parts1[partname].set_linewidth(1.5)
 
-        ax1.set_xticks(range(len(labels)))
-        ax1.set_xticklabels(labels, fontweight='bold')
+        ax1.set_xticks(range(len(mae_labels)))
+        ax1.set_xticklabels(mae_labels, fontweight='bold', rotation=15, ha='right')
         ax1.set_ylabel('MAE (a.u.)', fontweight='bold')
         ax1.set_title(f'ESP Validation MAE\n({qm_method}/{qm_basis})', fontweight='bold', pad=20)
         ax1.grid(True, alpha=0.3, axis='y')
 
-    # RMSE Violin Plot
-    rmse_data = [metrics['mpfit']['rmse'], metrics['gnn']['rmse']]
+    rmse_data = []
+    rmse_labels = []
+    rmse_colors = []
 
-    if all(rmse_data):
-        parts2 = ax2.violinplot(rmse_data, positions=range(len(labels)),
-                               showmeans=True, showmedians=True, widths=0.7)
+    for key in method_keys:
+        if key in metrics and metrics[key]['rmse']:
+            rmse_data.append(metrics[key]['rmse'])
+            rmse_labels.append(method_labels[key])
+            rmse_colors.append(colors[color_keys[key]])
+
+    # RMSE Violin Plot
+    if rmse_data:
+        parts2 = ax2.violinplot(rmse_data, positions=range(len(rmse_labels)),
+                               showmeans=True, showmedians=True, widths=0.6)
 
         # Style the violin plots
-        for patch, color in zip(parts2['bodies'], method_colors):
+        for patch, color in zip(parts2['bodies'], rmse_colors):
             patch.set_facecolor(color)
             patch.set_alpha(0.8)
             patch.set_edgecolor('white')
@@ -372,8 +389,8 @@ def create_esp_violin_plot(metrics: Dict,
                 parts2[partname].set_color('black')
                 parts2[partname].set_linewidth(1.5)
 
-        ax2.set_xticks(range(len(labels)))
-        ax2.set_xticklabels(labels, fontweight='bold')
+        ax2.set_xticks(range(len(rmse_labels)))
+        ax2.set_xticklabels(rmse_labels, fontweight='bold', rotation=15, ha='right')
         ax2.set_ylabel('RMSE (a.u.)', fontweight='bold')
         ax2.set_title(f'ESP Validation RMSE\n({qm_method}/{qm_basis})', fontweight='bold', pad=20)
         ax2.grid(True, alpha=0.3, axis='y')
@@ -385,7 +402,7 @@ def create_esp_violin_plot(metrics: Dict,
     fig.patch.set_facecolor('white')
 
     # Save plot
-    output_file = Path(output_dir) / "esp_validation_mpfit_vs_gnn.png"
+    output_file = Path(output_dir) / "esp_validation_all_methods.png"
     plt.savefig(output_file, dpi=300, bbox_inches='tight', facecolor='white')
 
     print(f"✓ ESP validation violin plot saved to: {output_file}")

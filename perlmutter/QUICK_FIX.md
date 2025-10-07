@@ -1,16 +1,34 @@
 # Quick Fix for Perlmutter Issues
 
-## Two Issues to Fix
+## Three Issues to Fix
 
 ### Issue 1: Psi4 Pickle Error
 **Temporary Workaround**: Use sequential processing (no parallel)
+**Status**: ✅ FIXED in batch.py (already applied)
 
 ### Issue 2: MMomentA Not Installed in ML Environment
 **Fix**: Install MMomentA package in both environments
+**Status**: ⚠️ NEEDS TO BE RUN
+
+### Issue 3: Pint Version Incompatibility in ML Environment
+**Error**: `TypeError: cannot inherit frozen dataclass from a non-frozen one`
+**Fix**: Downgrade pint to <0.24
+**Status**: ⚠️ NEEDS TO BE RUN
 
 ## Quick Fix Steps
 
-### 1. Install MMomentA Package
+### 1. Fix Pint Version (ML Environment)
+
+```bash
+cd /global/homes/p/parmar/MoML/MMomentA
+
+# Run the fix script
+bash perlmutter/setup/FIX_PINT_ERROR.sh
+```
+
+This downgrades pint to <0.24 which is compatible with openff-units.
+
+### 2. Install MMomentA Package
 
 ```bash
 cd /global/homes/p/parmar/MoML/MMomentA
@@ -23,13 +41,6 @@ pip install -e .
 # Install in ML environment
 conda activate $SCRATCH/conda-envs/mmomenta-ml
 pip install -e .
-```
-
-### 2. Pull Updated batch.py (For Parallel Support Later)
-
-```bash
-# Copy the fixed batch.py from your local machine
-# Or manually update MMomentA/data/batch.py to wrap calculator calls in try-except
 ```
 
 ### 3. Use Updated Pipeline

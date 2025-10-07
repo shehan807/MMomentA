@@ -289,3 +289,106 @@ def create_correlation_subplot_figure(results: Dict,
     plt.close()
 
     return str(output_file)
+
+
+def create_esp_violin_plot(metrics: Dict,
+                          output_dir: str = ".",
+                          figsize: Tuple[float, float] = (12, 6),
+                          qm_method: str = 'hf',
+                          qm_basis: str = '6-31G*') -> str:
+    """Create publication-quality violin plots for ESP validation: MPFIT vs MMomentA-GNN
+
+    Parameters
+    ----------
+    metrics : dict
+        Dictionary with 'mpfit' and 'gnn' keys, each containing 'mae' and 'rmse' lists
+    output_dir : str
+        Directory to save output plot
+    figsize : tuple
+        Figure size (width, height)
+    qm_method : str
+        QM method used for ESP calculation
+    qm_basis : str
+        QM basis set used for ESP calculation
+
+    Returns
+    -------
+    str
+        Path to saved plot file
+    """
+
+    setup_publication_style()
+    colors = get_method_colors()
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+
+    methods = ['MPFIT', 'MPFIT-GNN']
+    method_colors = [colors['MPFIT'], colors['MPFIT-GNN']]
+    labels = ['MPFIT', 'MMomentA-GNN']
+
+    # MAE Violin Plot
+    mae_data = [metrics['mpfit']['mae'], metrics['gnn']['mae']]
+
+    if all(mae_data):
+        parts1 = ax1.violinplot(mae_data, positions=range(len(labels)),
+                               showmeans=True, showmedians=True, widths=0.7)
+
+        # Style the violin plots
+        for patch, color in zip(parts1['bodies'], method_colors):
+            patch.set_facecolor(color)
+            patch.set_alpha(0.8)
+            patch.set_edgecolor('white')
+            patch.set_linewidth(1)
+
+        # Style the statistical lines
+        for partname in ('cbars', 'cmins', 'cmaxes', 'cmedians', 'cmeans'):
+            if partname in parts1:
+                parts1[partname].set_color('black')
+                parts1[partname].set_linewidth(1.5)
+
+        ax1.set_xticks(range(len(labels)))
+        ax1.set_xticklabels(labels, fontweight='bold')
+        ax1.set_ylabel('MAE (a.u.)', fontweight='bold')
+        ax1.set_title(f'ESP Validation MAE\n({qm_method}/{qm_basis})', fontweight='bold', pad=20)
+        ax1.grid(True, alpha=0.3, axis='y')
+
+    # RMSE Violin Plot
+    rmse_data = [metrics['mpfit']['rmse'], metrics['gnn']['rmse']]
+
+    if all(rmse_data):
+        parts2 = ax2.violinplot(rmse_data, positions=range(len(labels)),
+                               showmeans=True, showmedians=True, widths=0.7)
+
+        # Style the violin plots
+        for patch, color in zip(parts2['bodies'], method_colors):
+            patch.set_facecolor(color)
+            patch.set_alpha(0.8)
+            patch.set_edgecolor('white')
+            patch.set_linewidth(1)
+
+        # Style the statistical lines
+        for partname in ('cbars', 'cmins', 'cmaxes', 'cmedians', 'cmeans'):
+            if partname in parts2:
+                parts2[partname].set_color('black')
+                parts2[partname].set_linewidth(1.5)
+
+        ax2.set_xticks(range(len(labels)))
+        ax2.set_xticklabels(labels, fontweight='bold')
+        ax2.set_ylabel('RMSE (a.u.)', fontweight='bold')
+        ax2.set_title(f'ESP Validation RMSE\n({qm_method}/{qm_basis})', fontweight='bold', pad=20)
+        ax2.grid(True, alpha=0.3, axis='y')
+
+    # Overall figure styling
+    plt.tight_layout()
+
+    # Add subtle background
+    fig.patch.set_facecolor('white')
+
+    # Save plot
+    output_file = Path(output_dir) / "esp_validation_mpfit_vs_gnn.png"
+    plt.savefig(output_file, dpi=300, bbox_inches='tight', facecolor='white')
+
+    print(f"✓ ESP validation violin plot saved to: {output_file}")
+    plt.close()
+
+    return str(output_file)

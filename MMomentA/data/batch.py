@@ -355,25 +355,24 @@ class BatchProcessor:
         good_indices = []
 
         # Binary search to partition good from bad
+        # IMPORTANT: Test sequentially to avoid nested pickling issues
         def test_subset(mols, indices):
-            """Try processing a subset. Returns True if successful."""
+            """Try processing a subset sequentially. Returns True if successful."""
             if len(mols) == 0:
                 return True
 
             try:
-                Parallel(
-                    n_jobs=self.n_jobs,
-                    backend=self.backend,
-                    verbose=0,
-                    timeout=300,  # 5 min timeout for small batches
-                    batch_size=1
-                )(
-                    delayed(self._process_single_molecule)(idx, mol)
-                    for idx, mol in zip(indices, mols)
-                )
-                return True  # Success
-            except:
-                return False  # Failed
+                # Process sequentially (no parallelization during search)
+                # This avoids pickling errors and timeouts during binary search
+                for idx, mol in zip(indices, mols):
+                    result = self._process_single_molecule(idx, mol)
+                    if not result.success:
+                        return False  # Failed
+                return True  # All succeeded
+            except Exception as e:
+                # Any exception means this subset contains a bad molecule
+                logger.debug(f"        Subset test failed: {type(e).__name__}")
+                return False
 
         # Recursive binary search
         def find_bad_molecules(mols, indices, depth=0):

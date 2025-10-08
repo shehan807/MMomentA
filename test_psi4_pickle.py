@@ -4,28 +4,31 @@
 import sys
 from openff.toolkit import Molecule
 from MMomentA.data.batch import BatchProcessor
-from MMomentA.qm.mpfit import MPFITCalculator
+from MMomentA.qm.mpfit import MPFITCalculator, MPFITConfig
 
-# Create a molecule that will likely cause Psi4 to fail
-# (very large molecule or unusual geometry)
+# Create a molecule that will cause Psi4 to fail FAST
+# Use a molecule with unusual elements that Psi4 can't handle with the basis set
 print("Creating test molecule...")
 
-# Option 1: Molecule with bad geometry (atoms too close)
-mol = Molecule.from_smiles("C")
+# Use a large basis set that doesn't support all elements
+# This will cause a fast failure rather than a hang
+mol = Molecule.from_smiles("C1CC1")  # Simple cyclopropane
 mol.generate_conformers(n_conformers=1)
-
-# Manually set a bad conformer (all atoms at same position to trigger error)
-import numpy as np
-from openff.units import unit
-bad_coords = np.zeros((mol.n_atoms, 3))  # All atoms at origin
-mol._conformers = [bad_coords * unit.angstrom]
-
-# Option 2: A molecule known to cause issues (uncomment to try)
-# mol = Molecule.from_smiles("C" * 50)  # Very long chain
-# mol.generate_conformers(n_conformers=1)
 
 print(f"Test molecule: {mol.to_smiles()}")
 print(f"Atoms: {mol.n_atoms}")
+
+# Use a basis set that will cause issues or just rely on bad geometry
+# Actually, let's use the original approach but with a smaller timeout
+import numpy as np
+from openff.units import unit
+
+# Create overlapping atoms (two carbons at same position)
+coords = mol.conformers[0].m_as(unit.angstrom)
+coords[0] = coords[1]  # Make first two atoms overlap
+mol._conformers = [coords * unit.angstrom]
+
+print("Using overlapping atoms to trigger quick Psi4 failure")
 
 # Create batch processor with multiprocessing backend
 calculator = MPFITCalculator()

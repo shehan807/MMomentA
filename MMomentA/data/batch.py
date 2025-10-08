@@ -144,7 +144,7 @@ class BatchProcessor:
 
             # Use batching: process molecules in batches, so if one batch fails,
             # we can retry just that batch sequentially
-            batch_size = 50  # Process 50 molecules at a time
+            batch_size = 25  # Process 25 molecules at a time
             results = []
 
             for batch_start in range(0, n_molecules, batch_size):

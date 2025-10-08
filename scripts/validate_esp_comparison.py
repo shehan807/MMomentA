@@ -25,6 +25,7 @@ Usage:
 import argparse
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Dict, List, Tuple
 import numpy as np
@@ -271,9 +272,11 @@ def validate_molecule_esp(molecule: Molecule, mpfit_charges: np.ndarray,
         mpfit_esp = calculate_esp_from_charges(coords, mpfit_charges, grid_points)
         mpfit_metrics = compare_grid_esp(qm_esp, mpfit_esp, verbose=False)
 
-        # Calculate ESP from GNN charges
+        # Calculate ESP from GNN charges (time this since it's inference)
+        t_gnn_start = time.time()
         gnn_esp = calculate_esp_from_charges(coords, gnn_charges, grid_points)
         gnn_metrics = compare_grid_esp(qm_esp, gnn_esp, verbose=False)
+        gnn_metrics['time'] = time.time() - t_gnn_start
 
         result = {
             'success': True,
@@ -285,9 +288,12 @@ def validate_molecule_esp(molecule: Molecule, mpfit_charges: np.ndarray,
         # Optionally compute AM1-BCC charges and ESP
         if include_am1bcc:
             try:
+                t_am1bcc_start = time.time()
                 am1bcc_charges = compute_am1bcc_charges(molecule)
                 am1bcc_esp = calculate_esp_from_charges(coords, am1bcc_charges, grid_points)
-                result['am1bcc'] = compare_grid_esp(qm_esp, am1bcc_esp, verbose=False)
+                am1bcc_metrics = compare_grid_esp(qm_esp, am1bcc_esp, verbose=False)
+                am1bcc_metrics['time'] = time.time() - t_am1bcc_start
+                result['am1bcc'] = am1bcc_metrics
             except Exception as e:
                 logger.warning(f"AM1-BCC failed: {e}")
                 result['am1bcc'] = None
@@ -295,9 +301,12 @@ def validate_molecule_esp(molecule: Molecule, mpfit_charges: np.ndarray,
         # Optionally compute RESP charges and ESP
         if include_resp:
             try:
+                t_resp_start = time.time()
                 resp_charges = compute_resp_charges(molecule, qm_method, qm_basis, conformer_idx)
                 resp_esp = calculate_esp_from_charges(coords, resp_charges, grid_points)
-                result['resp'] = compare_grid_esp(qm_esp, resp_esp, verbose=False)
+                resp_metrics = compare_grid_esp(qm_esp, resp_esp, verbose=False)
+                resp_metrics['time'] = time.time() - t_resp_start
+                result['resp'] = resp_metrics
             except Exception as e:
                 logger.warning(f"RESP failed: {e}")
                 result['resp'] = None
@@ -357,10 +366,10 @@ def main():
 
     # Validate each molecule
     results = {
-        'mpfit': {'mae': [], 'rmse': []},
-        'am1bcc': {'mae': [], 'rmse': []},
-        'resp': {'mae': [], 'rmse': []},
-        'gnn': {'mae': [], 'rmse': []}
+        'mpfit': {'mae': [], 'rmse': [], 'time': []},
+        'am1bcc': {'mae': [], 'rmse': [], 'time': []},
+        'resp': {'mae': [], 'rmse': [], 'time': []},
+        'gnn': {'mae': [], 'rmse': [], 'time': []}
     }
 
     successful = 0
@@ -370,8 +379,13 @@ def main():
         mol_data = molecule_data_list[idx]
         mpfit_charges = mol_data.target_charges
 
+        # Get MPFIT computation time from dataset metadata (if available)
+        mpfit_time = getattr(mol_data, 'computation_time', None)
+
         # Predict charges with GNN
+        t_gnn_inference_start = time.time()
         gnn_charges = predict_charges(model, mol_data, device=args.device)
+        gnn_inference_time = time.time() - t_gnn_inference_start
 
         # Reconstruct OpenFF molecule for ESP calculation
         from openff.toolkit import Molecule
@@ -404,17 +418,23 @@ def main():
         if validation['success']:
             results['mpfit']['mae'].append(validation['mpfit']['mae'])
             results['mpfit']['rmse'].append(validation['mpfit']['rmse'])
+            if mpfit_time is not None:
+                results['mpfit']['time'].append(mpfit_time)
 
             if 'am1bcc' in validation and validation['am1bcc'] is not None:
                 results['am1bcc']['mae'].append(validation['am1bcc']['mae'])
                 results['am1bcc']['rmse'].append(validation['am1bcc']['rmse'])
+                results['am1bcc']['time'].append(validation['am1bcc']['time'])
 
             if 'resp' in validation and validation['resp'] is not None:
                 results['resp']['mae'].append(validation['resp']['mae'])
                 results['resp']['rmse'].append(validation['resp']['rmse'])
+                results['resp']['time'].append(validation['resp']['time'])
 
             results['gnn']['mae'].append(validation['gnn']['mae'])
             results['gnn']['rmse'].append(validation['gnn']['rmse'])
+            # Total GNN time = inference + ESP calculation
+            results['gnn']['time'].append(gnn_inference_time + validation['gnn']['time'])
             successful += 1
         else:
             failed += 1
@@ -426,23 +446,53 @@ def main():
     logger.info("="*60)
 
     # Print summary statistics
+    print("\n" + "="*70)
+    print("ESP VALIDATION RESULTS")
+    print("="*70)
+
     print("\nMPFIT ESP Validation:")
     print(f"  MAE:  {np.mean(results['mpfit']['mae']):.6e} ± {np.std(results['mpfit']['mae']):.6e} a.u.")
     print(f"  RMSE: {np.mean(results['mpfit']['rmse']):.6e} ± {np.std(results['mpfit']['rmse']):.6e} a.u.")
+    if results['mpfit']['time']:
+        print(f"  Time: {np.mean(results['mpfit']['time']):.3f} ± {np.std(results['mpfit']['time']):.3f} s/molecule")
 
     if results['am1bcc']['mae']:
         print("\nAM1-BCC ESP Validation:")
         print(f"  MAE:  {np.mean(results['am1bcc']['mae']):.6e} ± {np.std(results['am1bcc']['mae']):.6e} a.u.")
         print(f"  RMSE: {np.mean(results['am1bcc']['rmse']):.6e} ± {np.std(results['am1bcc']['rmse']):.6e} a.u.")
+        if results['am1bcc']['time']:
+            print(f"  Time: {np.mean(results['am1bcc']['time']):.3f} ± {np.std(results['am1bcc']['time']):.3f} s/molecule")
 
     if results['resp']['mae']:
         print("\nRESP ESP Validation:")
         print(f"  MAE:  {np.mean(results['resp']['mae']):.6e} ± {np.std(results['resp']['mae']):.6e} a.u.")
         print(f"  RMSE: {np.mean(results['resp']['rmse']):.6e} ± {np.std(results['resp']['rmse']):.6e} a.u.")
+        if results['resp']['time']:
+            print(f"  Time: {np.mean(results['resp']['time']):.3f} ± {np.std(results['resp']['time']):.3f} s/molecule")
 
     print("\nMMomentA-GNN ESP Validation:")
     print(f"  MAE:  {np.mean(results['gnn']['mae']):.6e} ± {np.std(results['gnn']['mae']):.6e} a.u.")
     print(f"  RMSE: {np.mean(results['gnn']['rmse']):.6e} ± {np.std(results['gnn']['rmse']):.6e} a.u.")
+    if results['gnn']['time']:
+        print(f"  Time: {np.mean(results['gnn']['time']):.3f} ± {np.std(results['gnn']['time']):.3f} s/molecule")
+
+    print("\n" + "="*70)
+    print("TIMING COMPARISON (seconds per molecule)")
+    print("="*70)
+    if results['mpfit']['time']:
+        print(f"MPFIT:        {np.mean(results['mpfit']['time']):8.3f} ± {np.std(results['mpfit']['time']):6.3f}")
+    if results['am1bcc']['time']:
+        print(f"AM1-BCC:      {np.mean(results['am1bcc']['time']):8.3f} ± {np.std(results['am1bcc']['time']):6.3f}")
+    if results['resp']['time']:
+        print(f"RESP:         {np.mean(results['resp']['time']):8.3f} ± {np.std(results['resp']['time']):6.3f}")
+    if results['gnn']['time']:
+        print(f"MMomentA-GNN: {np.mean(results['gnn']['time']):8.3f} ± {np.std(results['gnn']['time']):6.3f}")
+
+        # Calculate speedup
+        if results['mpfit']['time']:
+            speedup = np.mean(results['mpfit']['time']) / np.mean(results['gnn']['time'])
+            print(f"\nSpeedup over MPFIT: {speedup:.1f}x")
+    print("="*70)
 
     # Save results
     results_file = output_dir / "esp_validation_results.json"
@@ -451,13 +501,17 @@ def main():
             'mae_mean': float(np.mean(results['mpfit']['mae'])),
             'mae_std': float(np.std(results['mpfit']['mae'])),
             'rmse_mean': float(np.mean(results['mpfit']['rmse'])),
-            'rmse_std': float(np.std(results['mpfit']['rmse']))
+            'rmse_std': float(np.std(results['mpfit']['rmse'])),
+            'time_mean': float(np.mean(results['mpfit']['time'])) if results['mpfit']['time'] else None,
+            'time_std': float(np.std(results['mpfit']['time'])) if results['mpfit']['time'] else None
         },
         'gnn': {
             'mae_mean': float(np.mean(results['gnn']['mae'])),
             'mae_std': float(np.std(results['gnn']['mae'])),
             'rmse_mean': float(np.mean(results['gnn']['rmse'])),
-            'rmse_std': float(np.std(results['gnn']['rmse']))
+            'rmse_std': float(np.std(results['gnn']['rmse'])),
+            'time_mean': float(np.mean(results['gnn']['time'])) if results['gnn']['time'] else None,
+            'time_std': float(np.std(results['gnn']['time'])) if results['gnn']['time'] else None
         }
     }
 
@@ -466,7 +520,9 @@ def main():
             'mae_mean': float(np.mean(results['am1bcc']['mae'])),
             'mae_std': float(np.std(results['am1bcc']['mae'])),
             'rmse_mean': float(np.mean(results['am1bcc']['rmse'])),
-            'rmse_std': float(np.std(results['am1bcc']['rmse']))
+            'rmse_std': float(np.std(results['am1bcc']['rmse'])),
+            'time_mean': float(np.mean(results['am1bcc']['time'])) if results['am1bcc']['time'] else None,
+            'time_std': float(np.std(results['am1bcc']['time'])) if results['am1bcc']['time'] else None
         }
 
     if results['resp']['mae']:
@@ -474,7 +530,9 @@ def main():
             'mae_mean': float(np.mean(results['resp']['mae'])),
             'mae_std': float(np.std(results['resp']['mae'])),
             'rmse_mean': float(np.mean(results['resp']['rmse'])),
-            'rmse_std': float(np.std(results['resp']['rmse']))
+            'rmse_std': float(np.std(results['resp']['rmse'])),
+            'time_mean': float(np.mean(results['resp']['time'])) if results['resp']['time'] else None,
+            'time_std': float(np.std(results['resp']['time'])) if results['resp']['time'] else None
         }
 
     with open(results_file, 'w') as f:

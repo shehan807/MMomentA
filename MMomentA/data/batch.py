@@ -193,15 +193,24 @@ class BatchProcessor:
                     if is_psi4_pickle_error:
                         logger.warning(
                             f"  ✗ Batch failed with pickling error ({error_type}). "
-                            f"Retrying these {len(batch_molecules)} molecules sequentially..."
+                            f"SKIPPING these {len(batch_molecules)} molecules (batch {batch_start}-{batch_end-1})."
                         )
-                        # Retry just this batch sequentially
+                        # Skip this batch - create failed results for tracking
                         batch_results = []
                         for idx, mol in zip(batch_indices, batch_molecules):
-                            result = self._process_single_molecule(idx, mol)
-                            batch_results.append(result)
+                            batch_results.append(MoleculeResult(
+                                molecule_index=idx,
+                                smiles=mol.to_smiles(mapped=False),
+                                formula=mol.hill_formula,
+                                n_atoms=mol.n_atoms,
+                                results={method: {"error": f"Batch skipped due to {error_type}", "time": 0.0}
+                                        for method in self.calculators.keys()},
+                                success=False,
+                                partial_success=False,
+                                failed_methods=list(self.calculators.keys())
+                            ))
                         results.extend(batch_results)
-                        logger.info(f"  ✓ Batch completed sequentially")
+                        logger.info(f"  ⊘ Batch skipped, continuing to next batch")
                     else:
                         # Different error - re-raise
                         logger.error(f"Batch failed with unexpected error: {error_type}")

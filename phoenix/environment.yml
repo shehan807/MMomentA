@@ -1,0 +1,49 @@
+name: mmomenta
+channels:
+  - pytorch
+  - nvidia
+  - dglteam/label/th24_cu118
+  - conda-forge
+  - psi4
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - mamba
+  - numpy
+  - scipy
+  - pandas
+  - matplotlib
+  - seaborn
+  - jupyter
+  - rdkit
+  - openbabel
+  - psi4
+  - pygdma
+  - h5py
+  - pytables
+  - joblib
+  - pytorch=2.4
+  - pytorch-cuda=11.8
+  - dgl  # Will use dglteam/label/th24_cu118 channel
+  # OpenFF dependencies
+  - packaging
+  - openff-forcefields
+  - openff-amber-ff-ports
+  - openff-units
+  - openff-utilities
+  - networkx
+  - xmltodict
+  - pymongo
+  - python-constraint
+  - cachetools
+  - typing_extensions
+  - openmm >=7.6
+  - mdtraj
+  - ambertools >=22
+  - pip:
+      - dgl -f https://data.dgl.ai/wheels/torch-2.6/cu118/repo.html
+      # OpenFF packages will be installed from source via script
+      # - openff-toolkit (from source)
+      # - openff-interchange (from source)
+      - openff-recharge

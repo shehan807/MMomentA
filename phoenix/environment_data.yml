@@ -1,0 +1,36 @@
+name: mmomenta-data
+channels:
+  - conda-forge
+  - psi4
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  # QM packages
+  - psi4
+  - pygdma
+  # Chemistry tools
+  - rdkit
+  - openbabel
+  # Scientific computing
+  - numpy
+  - scipy
+  - pandas
+  - h5py
+  - pytables
+  - joblib
+  # OpenFF dependencies
+  - packaging
+  - openff-forcefields
+  - openff-amber-ff-ports
+  - openff-units
+  - openff-utilities
+  - networkx
+  - xmltodict
+  - pymongo
+  - python-constraint
+  - cachetools
+  - typing_extensions
+  - pip:
+      # OpenFF packages from source (see install_openff_from_source.sh)
+      - openff-recharge

@@ -65,48 +65,64 @@ def download_qm9(output_path: str, max_molecules: int = None):
 
 
 def download_zinc(output_path: str, max_molecules: int = None, split: str = 'train'):
-    """Download ZINC dataset and convert to OpenFF molecules."""
+    """Download ZINC dataset and convert to OpenFF molecules.
+
+    Note: PyG ZINC subset doesn't include full bond information needed for SMILES reconstruction.
+    We'll read SMILES directly from the raw ZINC files.
+    """
     from torch_geometric.datasets import ZINC
-    from torch_geometric.utils import to_smiles
     from openff.toolkit import Molecule
     from openff.units import unit
+    import csv
+    from pathlib import Path
 
     print(f"Downloading ZINC dataset ({split} split)...")
     dataset = ZINC(root='data/zinc_raw', subset=True, split=split)
 
+    # ZINC downloads raw SMILES files - let's read them directly
+    raw_dir = Path('data/zinc_raw/ZINC')
+    smiles_file = raw_dir / split / f'{split}.csv'
+
+    if not smiles_file.exists():
+        print(f"ERROR: SMILES file not found at {smiles_file}")
+        print("Available files:")
+        for f in (raw_dir / split).glob('*'):
+            print(f"  {f}")
+        return 0
+
     molecules = []
     max_molecules = max_molecules or len(dataset)
 
-    print(f"Converting {max_molecules} ZINC molecules...")
+    print(f"Reading SMILES from {smiles_file}...")
 
-    for i, data in enumerate(dataset[:max_molecules]):
-        if i % 100 == 0:
-            print(f"  Progress: {i}/{max_molecules}")
+    with open(smiles_file, 'r') as f:
+        reader = csv.reader(f)
+        for i, row in enumerate(reader):
+            if i >= max_molecules:
+                break
 
-        try:
-            # Use PyTorch Geometric's built-in to_smiles function
-            smiles = to_smiles(data)
-
-            # Print reconstructed SMILES periodically
             if i % 100 == 0:
-                print(f"  SMILES: {smiles}")
+                print(f"  Progress: {i}/{max_molecules}")
 
-            # Create OpenFF molecule from SMILES
-            mol = Molecule.from_smiles(smiles, allow_undefined_stereo=True)
+            try:
+                # ZINC CSV format: smiles (first column)
+                smiles = row[0]
 
-            # Add 3D coordinates if available
-            if hasattr(data, 'pos') and data.pos is not None:
-                positions = data.pos.numpy()
-                mol.add_conformer(positions * unit.angstrom)
-            else:
-                # Generate conformer
+                # Print SMILES periodically
+                if i % 100 == 0:
+                    print(f"  SMILES: {smiles}")
+
+                # Create OpenFF molecule from SMILES
+                mol = Molecule.from_smiles(smiles, allow_undefined_stereo=True)
+
+                # Generate conformer (ZINC doesn't include 3D coords)
                 mol.generate_conformers(n_conformers=1)
 
-            molecules.append(mol)
+                molecules.append(mol)
 
-        except Exception as e:
-            print(f"  Failed on molecule {i}: {e}")
-            continue
+            except Exception as e:
+                print(f"  Failed on molecule {i}: {e}")
+                continue
 
     # Save
     output_path = Path(output_path)

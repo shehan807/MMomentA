@@ -27,58 +27,18 @@ ML_ENV="$SCRATCH/conda-envs/mmomenta-ml"
 
 cd "$MMOMENTA_DIR"
 
-# Step 1: Download and convert ZINC
-echo "Step 1/6: Downloading ZINC fragments..."
+# Step 1: Download ZINC using PyTorch Geometric
+echo "Step 1/6: Downloading ZINC dataset (PyTorch Geometric)..."
 conda activate "$ML_ENV"
 
-mkdir -p data/geom
-cd data/geom
+# Download ZINC using PyG (1000 molecules from train split)
+python scripts/download_pyg_dataset.py \
+    --dataset zinc \
+    --output data/zinc_molecules.pkl \
+    --max-molecules 1000 \
+    --split train
 
-if [ ! -f "zinc_fragments.smi" ]; then
-    wget https://raw.githubusercontent.com/openforcefield/qca-dataset-submission/master/submissions/2022-12-13-OpenFF-ZINC-Fragments/zinc_fragments.smi
-    echo "✓ Downloaded ZINC fragments"
-else
-    echo "✓ ZINC fragments already exist"
-fi
-
-cd ../..
-
-# Convert SMILES to molecules (take first 100)
-python << 'EOF'
-import pickle
-from openff.toolkit import Molecule
-from pathlib import Path
-
-molecules = []
-max_molecules = 100
-
-print(f"Converting first {max_molecules} ZINC SMILES to molecules...")
-
-with open('data/geom/zinc_fragments.smi', 'r') as f:
-    for i, line in enumerate(f):
-        if i >= max_molecules:
-            break
-
-        smiles = line.strip().split()[0]  # First column is SMILES
-
-        try:
-            mol = Molecule.from_smiles(smiles, allow_undefined_stereo=True)
-            molecules.append(mol)
-
-            if (i + 1) % 20 == 0:
-                print(f"  Converted {i + 1}/{max_molecules} molecules")
-        except Exception as e:
-            print(f"  ✗ Failed on SMILES {i}: {e}")
-            continue
-
-Path('data').mkdir(exist_ok=True)
-with open('data/zinc_molecules.pkl', 'wb') as f:
-    pickle.dump(molecules, f)
-
-print(f"✓ Saved {len(molecules)} molecules to data/zinc_molecules.pkl")
-EOF
-
-echo "✓ ZINC molecules created"
+echo "✓ ZINC molecules downloaded"
 echo ""
 
 # Step 2: Generate MPFIT charges (with caching)

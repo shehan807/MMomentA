@@ -16,6 +16,20 @@ from ..qm.mpfit import MPFITCalculator, MPFITResult
 from ..qm.resp import RESPCalculator, RESPResult
 from ..qm.am1bcc import AM1BCCCalculator, AM1BCCResult
 
+# Make Psi4Error picklable by registering a custom reducer
+try:
+    import psi4
+    from psi4.driver.p4util import Psi4Error
+    import copyreg
+
+    def _pickle_psi4error(error):
+        """Custom pickler for Psi4Error that converts it to a regular Exception."""
+        return Exception, (str(error),)
+
+    # Register the custom reducer
+    copyreg.pickle(Psi4Error, _pickle_psi4error)
+except ImportError:
+    pass  # Psi4 not available
 
 logger = logging.getLogger(__name__)
 

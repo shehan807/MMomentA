@@ -101,6 +101,10 @@ echo "Installing utilities..."
 conda install -c conda-forge tqdm joblib -y
 
 echo ""
+echo "Installing PyTorch Geometric (for dataset download)..."
+pip install torch-geometric
+
+echo ""
 echo "Installing MMomentA package..."
 cd "${MMOMENTA_DIR:-$(dirname $(dirname $(dirname ${BASH_SOURCE[0]})))}"
 pip install -e .
@@ -153,6 +157,12 @@ try:
     print("✓ lovelyplots installed")
 except ImportError as e:
     print(f"✗ lovelyplots not available: {e}")
+
+try:
+    import torch_geometric
+    print(f"✓ PyTorch Geometric {torch_geometric.__version__} installed")
+except ImportError as e:
+    print(f"✗ PyTorch Geometric not available: {e}")
 
 print("\n✓ mmomenta-ml environment ready!")
 EOF

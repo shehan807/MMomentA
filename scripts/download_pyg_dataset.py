@@ -65,10 +65,15 @@ def download_qm9(output_path: str, max_molecules: int = None):
 
 
 def download_zinc(output_path: str, max_molecules: int = None, split: str = 'train'):
-    """Download ZINC dataset and convert to OpenFF molecules."""
+    """Download ZINC dataset and convert to OpenFF molecules.
+
+    Note: PyG ZINC dataset stores molecules as graphs, not SMILES.
+    We reconstruct SMILES from atomic numbers and bonds.
+    """
     from torch_geometric.datasets import ZINC
     from openff.toolkit import Molecule
     from openff.units import unit
+    from rdkit import Chem
 
     print(f"Downloading ZINC dataset ({split} split)...")
     dataset = ZINC(root='data/zinc_raw', subset=True, split=split)
@@ -76,31 +81,50 @@ def download_zinc(output_path: str, max_molecules: int = None, split: str = 'tra
     molecules = []
     max_molecules = max_molecules or len(dataset)
 
-    print(f"Converting {max_molecules} ZINC molecules...")
+    print(f"Converting {max_molecules} ZINC molecules from graphs to SMILES...")
 
     for i, data in enumerate(dataset[:max_molecules]):
         if i % 100 == 0:
             print(f"  Progress: {i}/{max_molecules}")
 
         try:
-            # ZINC provides SMILES
-            if hasattr(data, 'smiles'):
-                smiles = data.smiles
-            elif hasattr(data, 'smile'):
-                smiles = data.smile
-            else:
-                print(f"  Skipping molecule {i}: no SMILES")
-                continue
+            # ZINC provides graph representation: atomic numbers (x) and edge indices
+            atomic_nums = data.x[:, 0].long().numpy()  # First column is atomic number
+            edge_index = data.edge_index.numpy()
 
-            # Create molecule from SMILES
+            # Reconstruct RDKit molecule from graph
+            mol_rdkit = Chem.RWMol()
+
+            # Add atoms
+            for atomic_num in atomic_nums:
+                atom = Chem.Atom(int(atomic_num))
+                mol_rdkit.AddAtom(atom)
+
+            # Add bonds (edge_index has both directions, so only add once)
+            added_bonds = set()
+            for j in range(edge_index.shape[1]):
+                src, dst = int(edge_index[0, j]), int(edge_index[1, j])
+                if (src, dst) not in added_bonds and (dst, src) not in added_bonds:
+                    mol_rdkit.AddBond(src, dst, Chem.BondType.SINGLE)
+                    added_bonds.add((src, dst))
+
+            # Sanitize and get SMILES
+            mol_rdkit = mol_rdkit.GetMol()
+            Chem.SanitizeMol(mol_rdkit)
+            smiles = Chem.MolToSmiles(mol_rdkit)
+
+            # Print reconstructed SMILES periodically
+            if i % 100 == 0:
+                print(f"  Reconstructed SMILES: {smiles}")
+
+            # Create OpenFF molecule from SMILES
             mol = Molecule.from_smiles(smiles, allow_undefined_stereo=True)
 
-            # Add conformer if coordinates provided, otherwise generate
+            # Add 3D coordinates if available
             if hasattr(data, 'pos') and data.pos is not None:
                 positions = data.pos.numpy()
                 mol.add_conformer(positions * unit.angstrom)
             else:
-                # ZINC typically doesn't include 3D coordinates
                 # Generate conformer
                 mol.generate_conformers(n_conformers=1)
 

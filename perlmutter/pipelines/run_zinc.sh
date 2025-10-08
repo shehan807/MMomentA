@@ -46,7 +46,7 @@ python scripts/prepare_dataset_cached.py \
     --train-frac 0.7 \
     --val-frac 0.15 \
     --test-frac 0.15 \
-    --n-jobs 16
+    --n-jobs -1
 
 echo "✓ ZINC MPFIT dataset created"
 echo ""

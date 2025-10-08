@@ -96,7 +96,7 @@ class BatchProcessor:
         self,
         calculators: Optional[Dict[str, Any]] = None,
         n_jobs: int = -1,
-        backend: str = "loky",
+        backend: str = "multiprocessing",
         verbose: int = 1
     ):
         self.calculators = calculators or self._default_calculators()

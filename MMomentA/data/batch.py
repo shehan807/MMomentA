@@ -174,62 +174,81 @@ class BatchProcessor:
 
         original_cwd = os.getcwd()
 
-        with tempfile.TemporaryDirectory(prefix=f"mol_{mol_idx}_pid_{pid}_") as temp_dir:
-            os.chdir(temp_dir)
-            os.environ['PSI_SCRATCH'] = temp_dir
+        try:
+            with tempfile.TemporaryDirectory(prefix=f"mol_{mol_idx}_pid_{pid}_") as temp_dir:
+                os.chdir(temp_dir)
+                os.environ['PSI_SCRATCH'] = temp_dir
 
-            if not molecule.conformers:
-                logger.debug(f"[Process {pid}] Generating conformer for molecule {mol_idx}")
-                molecule.generate_conformers(n_conformers=1)
+                if not molecule.conformers:
+                    logger.debug(f"[Process {pid}] Generating conformer for molecule {mol_idx}")
+                    molecule.generate_conformers(n_conformers=1)
 
-            results = {}
-            failed_methods = []
+                results = {}
+                failed_methods = []
 
-            for method_name, calculator in self.calculators.items():
-                logger.debug(f"[Process {pid}] Running {method_name} on molecule {mol_idx}")
+                for method_name, calculator in self.calculators.items():
+                    logger.debug(f"[Process {pid}] Running {method_name} on molecule {mol_idx}")
 
-                try:
-                    result = calculator.compute(molecule)
+                    try:
+                        result = calculator.compute(molecule)
 
-                    if result.success:
-                        results[method_name] = self._serialize_result(result)
-                        logger.debug(
-                            f"[Process {pid}] {method_name} succeeded in {result.time_seconds:.2f}s"
-                        )
-                    else:
+                        if result.success:
+                            results[method_name] = self._serialize_result(result)
+                            logger.debug(
+                                f"[Process {pid}] {method_name} succeeded in {result.time_seconds:.2f}s"
+                            )
+                        else:
+                            failed_methods.append(method_name)
+                            # Convert error_message to string to avoid pickling issues
+                            error_msg = str(result.error_message) if result.error_message else "Unknown error"
+                            logger.warning(
+                                f"[Process {pid}] {method_name} failed: {error_msg}"
+                            )
+                            results[method_name] = {
+                                "error": error_msg,
+                                "time": result.time_seconds
+                            }
+                    except Exception as e:
+                        # Catch any exceptions and convert to string to avoid pickling issues
                         failed_methods.append(method_name)
-                        # Convert error_message to string to avoid pickling issues
-                        error_msg = str(result.error_message) if result.error_message else "Unknown error"
+                        error_msg = f"{type(e).__name__}: {str(e)}"
                         logger.warning(
-                            f"[Process {pid}] {method_name} failed: {error_msg}"
+                            f"[Process {pid}] {method_name} raised exception: {error_msg}"
                         )
                         results[method_name] = {
                             "error": error_msg,
-                            "time": result.time_seconds
+                            "time": 0.0
                         }
-                except Exception as e:
-                    # Catch any exceptions and convert to string to avoid pickling issues
-                    failed_methods.append(method_name)
-                    error_msg = f"{type(e).__name__}: {str(e)}"
-                    logger.warning(
-                        f"[Process {pid}] {method_name} raised exception: {error_msg}"
-                    )
-                    results[method_name] = {
-                        "error": error_msg,
-                        "time": 0.0
-                    }
 
+                os.chdir(original_cwd)
+
+                return MoleculeResult(
+                    molecule_index=mol_idx,
+                    smiles=molecule.to_smiles(mapped=False),
+                    formula=molecule.hill_formula,
+                    n_atoms=molecule.n_atoms,
+                    results=results,
+                    success=len(failed_methods) == 0,
+                    partial_success=0 < len(failed_methods) < len(self.calculators),
+                    failed_methods=failed_methods
+                )
+
+        except Exception as e:
+            # Top-level exception handler to catch any unpicklable exceptions (e.g., Psi4Error)
+            # and return a safe, picklable result
             os.chdir(original_cwd)
+            error_msg = f"Critical error in molecule processing: {type(e).__name__}: {str(e)}"
+            logger.error(f"[Process {pid}] {error_msg}")
 
             return MoleculeResult(
                 molecule_index=mol_idx,
-                smiles=molecule.to_smiles(mapped=False),
-                formula=molecule.hill_formula,
-                n_atoms=molecule.n_atoms,
-                results=results,
-                success=len(failed_methods) == 0,
-                partial_success=0 < len(failed_methods) < len(self.calculators),
-                failed_methods=failed_methods
+                smiles=molecule.to_smiles(mapped=False) if hasattr(molecule, 'to_smiles') else "UNKNOWN",
+                formula=molecule.hill_formula if hasattr(molecule, 'hill_formula') else "UNKNOWN",
+                n_atoms=molecule.n_atoms if hasattr(molecule, 'n_atoms') else 0,
+                results={method: {"error": error_msg, "time": 0.0} for method in self.calculators.keys()},
+                success=False,
+                partial_success=False,
+                failed_methods=list(self.calculators.keys())
             )
 
     @staticmethod

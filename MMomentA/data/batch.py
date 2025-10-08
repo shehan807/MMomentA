@@ -5,7 +5,7 @@ import time
 import tempfile
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Callable, Optional, Union
+from typing import List, Dict, Any, Callable, Optional, Union, Tuple
 from dataclasses import dataclass, asdict
 
 import numpy as np
@@ -193,24 +193,19 @@ class BatchProcessor:
                     if is_psi4_pickle_error:
                         logger.warning(
                             f"  ✗ Batch failed with pickling error ({error_type}). "
-                            f"SKIPPING these {len(batch_molecules)} molecules (batch {batch_start}-{batch_end-1})."
+                            f"Identifying problematic molecule(s) via binary search..."
                         )
-                        # Skip this batch - create failed results for tracking
-                        batch_results = []
-                        for idx, mol in zip(batch_indices, batch_molecules):
-                            batch_results.append(MoleculeResult(
-                                molecule_index=idx,
-                                smiles=mol.to_smiles(mapped=False),
-                                formula=mol.hill_formula,
-                                n_atoms=mol.n_atoms,
-                                results={method: {"error": f"Batch skipped due to {error_type}", "time": 0.0}
-                                        for method in self.calculators.keys()},
-                                success=False,
-                                partial_success=False,
-                                failed_methods=list(self.calculators.keys())
-                            ))
+
+                        # Binary search to find problematic molecule(s)
+                        batch_results, bad_indices = self._isolate_bad_molecules(
+                            batch_molecules, batch_indices
+                        )
+
                         results.extend(batch_results)
-                        logger.info(f"  ⊘ Batch skipped, continuing to next batch")
+                        logger.info(
+                            f"  ✓ Batch completed with {len(bad_indices)} molecule(s) skipped "
+                            f"(indices: {bad_indices})"
+                        )
                     else:
                         # Different error - re-raise
                         logger.error(f"Batch failed with unexpected error: {error_type}")
@@ -326,6 +321,142 @@ class BatchProcessor:
                 partial_success=False,
                 failed_methods=list(self.calculators.keys())
             )
+
+    def _isolate_bad_molecules(
+        self,
+        batch_molecules: List[Molecule],
+        batch_indices: List[int]
+    ) -> Tuple[List[MoleculeResult], List[int]]:
+        """Identify problematic molecules via binary search, process the rest.
+
+        Strategy:
+        1. Use binary search to find molecule(s) causing pickling errors
+        2. Process good molecules in parallel
+        3. Mark bad molecules as failed
+
+        Parameters
+        ----------
+        batch_molecules : list of Molecule
+            Molecules that failed when processed together
+        batch_indices : list of int
+            Original indices of batch molecules
+
+        Returns
+        -------
+        results : list of MoleculeResult
+            Results for all molecules (successful + failed)
+        bad_indices : list of int
+            Indices of molecules that couldn't be processed
+        """
+        logger.info(f"    Binary search: testing {len(batch_molecules)} molecules...")
+
+        bad_indices = set()
+        good_molecules = []
+        good_indices = []
+
+        # Binary search to partition good from bad
+        def test_subset(mols, indices):
+            """Try processing a subset. Returns True if successful."""
+            if len(mols) == 0:
+                return True
+
+            try:
+                Parallel(
+                    n_jobs=self.n_jobs,
+                    backend=self.backend,
+                    verbose=0,
+                    timeout=300,  # 5 min timeout for small batches
+                    batch_size=1
+                )(
+                    delayed(self._process_single_molecule)(idx, mol)
+                    for idx, mol in zip(indices, mols)
+                )
+                return True  # Success
+            except:
+                return False  # Failed
+
+        # Recursive binary search
+        def find_bad_molecules(mols, indices, depth=0):
+            if len(mols) == 0:
+                return
+
+            if len(mols) == 1:
+                # Base case: single molecule
+                if test_subset(mols, indices):
+                    good_molecules.append(mols[0])
+                    good_indices.append(indices[0])
+                    logger.info(f"      {'  '*depth}✓ Molecule {indices[0]} is OK")
+                else:
+                    bad_indices.add(indices[0])
+                    logger.warning(f"      {'  '*depth}✗ Molecule {indices[0]} FAILS (SMILES: {mols[0].to_smiles(mapped=False)})")
+                return
+
+            # Divide and conquer
+            mid = len(mols) // 2
+            left_mols, right_mols = mols[:mid], mols[mid:]
+            left_idx, right_idx = indices[:mid], indices[mid:]
+
+            logger.info(f"      {'  '*depth}Testing left half ({len(left_mols)} mols)...")
+            if not test_subset(left_mols, left_idx):
+                find_bad_molecules(left_mols, left_idx, depth+1)
+            else:
+                good_molecules.extend(left_mols)
+                good_indices.extend(left_idx)
+                logger.info(f"      {'  '*depth}✓ Left half OK")
+
+            logger.info(f"      {'  '*depth}Testing right half ({len(right_mols)} mols)...")
+            if not test_subset(right_mols, right_idx):
+                find_bad_molecules(right_mols, right_idx, depth+1)
+            else:
+                good_molecules.extend(right_mols)
+                good_indices.extend(right_idx)
+                logger.info(f"      {'  '*depth}✓ Right half OK")
+
+        # Execute binary search
+        find_bad_molecules(batch_molecules, batch_indices)
+
+        # Now process good molecules in parallel (we know they work)
+        results = []
+        if good_molecules:
+            logger.info(f"    Processing {len(good_molecules)} good molecules in parallel...")
+            good_results = Parallel(
+                n_jobs=self.n_jobs,
+                backend=self.backend,
+                verbose=0
+            )(
+                delayed(self._process_single_molecule)(idx, mol)
+                for idx, mol in zip(good_indices, good_molecules)
+            )
+            results.extend(good_results)
+
+        # Create failed results for bad molecules
+        for bad_idx in sorted(bad_indices):
+            mol = batch_molecules[batch_indices.index(bad_idx)]
+            smiles = mol.to_smiles(mapped=False)
+            results.append(MoleculeResult(
+                molecule_index=bad_idx,
+                smiles=smiles,
+                formula=mol.hill_formula,
+                n_atoms=mol.n_atoms,
+                results={method: {"error": "Causes pickling error in parallel processing", "time": 0.0}
+                        for method in self.calculators.keys()},
+                success=False,
+                partial_success=False,
+                failed_methods=list(self.calculators.keys())
+            ))
+
+        # Print summary
+        logger.info(f"    Binary search complete:")
+        logger.info(f"      ✓ Successfully processed: {len(good_molecules)} molecules")
+        logger.info(f"      ✗ Failed (removed): {len(bad_indices)} molecules")
+        if bad_indices:
+            logger.warning(f"    Problematic SMILES removed from batch:")
+            for bad_idx in sorted(bad_indices):
+                mol = batch_molecules[batch_indices.index(bad_idx)]
+                smiles = mol.to_smiles(mapped=False)
+                logger.warning(f"      • Index {bad_idx}: {smiles}")
+
+        return results, sorted(bad_indices)
 
     @staticmethod
     def _serialize_result(result: Union[MPFITResult, RESPResult, AM1BCCResult]) -> Dict[str, Any]:

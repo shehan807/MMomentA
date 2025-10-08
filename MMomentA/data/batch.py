@@ -144,7 +144,11 @@ class BatchProcessor:
 
             # Use batching: process molecules in batches, so if one batch fails,
             # we can retry just that batch sequentially
-            batch_size = 25  # Process 25 molecules at a time
+            # Use 2x the number of cores for batch size to minimize sequential fallback impact
+            import multiprocessing
+            n_cores = multiprocessing.cpu_count() if self.n_jobs == -1 else self.n_jobs
+            batch_size = max(25, 2 * n_cores)  # At least 25, or 2x cores
+            logger.info(f"Using batch size of {batch_size} molecules ({n_cores} cores × 2)")
             results = []
 
             for batch_start in range(0, n_molecules, batch_size):

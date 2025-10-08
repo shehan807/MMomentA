@@ -43,7 +43,7 @@ python scripts/prepare_dataset_cached.py \
     --train-frac 0.8 \
     --val-frac 0.1 \
     --test-frac 0.1 \
-    --n-jobs 16
+    --n-jobs -1
 
 echo "✓ QM9 MPFIT dataset created"
 echo ""

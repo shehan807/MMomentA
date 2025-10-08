@@ -75,7 +75,7 @@ echo "✓ QM9 multipole model trained"
 echo ""
 
 # Step 5: Compare results
-echo "Step 5/5: Comparing training results..."
+echo "Step 5/6: Comparing training results..."
 
 python << 'EOF'
 import json
@@ -87,7 +87,7 @@ baseline_test = baseline['results']['test_metrics']
 multipole_test = multipole['results']['test_metrics']
 
 print("\n" + "="*70)
-print("QM9 TRAINING RESULTS COMPARISON")
+print("TRAINING RESULTS COMPARISON")
 print("="*70)
 
 print("\nBaseline Model (no multipoles):")
@@ -107,8 +107,26 @@ EOF
 
 echo ""
 
+# Step 6: Validating ESP reproduction (MPFIT, AM1-BCC, RESP, MMomentA-GNN)
+echo "Step 6/6: Validating ESP reproduction (MPFIT vs MMomentA-GNN)..."
+conda activate "$DATA_ENV"
+
+mkdir -p figures/qm9_esp_validation
+
+python scripts/validate_esp_comparison.py \
+    --dataset data/qm9_mpfit.h5 \
+    --model-dir runs/qm9_multipoles \
+    --output-dir figures/qm9_esp_validation \
+    --n-molecules 20 \
+    --qm-method hf \
+    --qm-basis "6-31G*" \
+    --device cpu
+
+echo ""
 echo "================================================"
 echo "QM9 Pipeline Complete!"
 echo "================================================"
 echo "Training results: runs/qm9_{baseline,multipoles}/"
+echo "ESP validation: figures/qm9_esp_validation/esp_validation_all_methods.png"
+echo "Validation metrics: figures/qm9_esp_validation/esp_validation_results.json"
 echo ""

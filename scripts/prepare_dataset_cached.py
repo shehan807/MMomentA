@@ -331,7 +331,7 @@ def main():
     parser.add_argument("--random-seed", type=int, default=2666)
 
     parser.add_argument("--n-jobs", type=int, default=-1, help="Number of parallel jobs")
-    parser.add_argument("--backend", choices=["loky", "multiprocessing"], default="loky")
+    parser.add_argument("--backend", choices=["loky", "multiprocessing"], default="multiprocessing")
     parser.add_argument("--sequential", action="store_true", help="Run sequentially")
 
     parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR"], default="INFO")

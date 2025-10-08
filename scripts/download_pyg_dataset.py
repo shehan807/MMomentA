@@ -65,64 +65,57 @@ def download_qm9(output_path: str, max_molecules: int = None):
 
 
 def download_zinc(output_path: str, max_molecules: int = None, split: str = 'train'):
-    """Download ZINC dataset and convert to OpenFF molecules.
-
-    Note: PyG ZINC subset doesn't include full bond information needed for SMILES reconstruction.
-    We'll read SMILES directly from the raw ZINC files.
-    """
-    from torch_geometric.datasets import ZINC
+    """Download ZINC dataset (250k molecules) and convert to OpenFF molecules."""
     from openff.toolkit import Molecule
     from openff.units import unit
-    import csv
-    from pathlib import Path
+    import pandas as pd
+    import urllib.request
 
-    print(f"Downloading ZINC dataset ({split} split)...")
-    dataset = ZINC(root='data/zinc_raw', subset=True, split=split)
+    # ZINC 250k dataset URL
+    url = "https://raw.githubusercontent.com/aspuru-guzik-group/chemical_vae/master/models/zinc_properties/250k_rndm_zinc_drugs_clean_3.csv"
 
-    # ZINC downloads raw SMILES files - let's read them directly
-    raw_dir = Path('data/zinc_raw/ZINC')
-    smiles_file = raw_dir / split / f'{split}.csv'
+    print(f"Downloading ZINC 250k dataset from chemical_vae repository...")
+    print(f"URL: {url}")
 
-    if not smiles_file.exists():
-        print(f"ERROR: SMILES file not found at {smiles_file}")
-        print("Available files:")
-        for f in (raw_dir / split).glob('*'):
-            print(f"  {f}")
-        return 0
+    # Download CSV
+    csv_path = 'data/zinc_raw/250k_rndm_zinc_drugs_clean_3.csv'
+    Path(csv_path).parent.mkdir(parents=True, exist_ok=True)
+
+    urllib.request.urlretrieve(url, csv_path)
+    print(f"✓ Downloaded to {csv_path}")
+
+    # Read CSV
+    print("Reading SMILES from CSV...")
+    df = pd.read_csv(csv_path)
+    df['smiles'] = df['smiles'].apply(lambda s: s.replace('\n', ''))
 
     molecules = []
-    max_molecules = max_molecules or len(dataset)
+    max_molecules = max_molecules or len(df)
 
-    print(f"Reading SMILES from {smiles_file}...")
+    print(f"Converting {max_molecules} ZINC molecules...")
 
-    with open(smiles_file, 'r') as f:
-        reader = csv.reader(f)
-        for i, row in enumerate(reader):
-            if i >= max_molecules:
-                break
+    for i in range(min(max_molecules, len(df))):
+        if i % 100 == 0:
+            print(f"  Progress: {i}/{max_molecules}")
 
+        try:
+            smiles = df.iloc[i]['smiles']
+
+            # Print SMILES periodically
             if i % 100 == 0:
-                print(f"  Progress: {i}/{max_molecules}")
+                print(f"  SMILES: {smiles}")
 
-            try:
-                # ZINC CSV format: smiles (first column)
-                smiles = row[0]
+            # Create OpenFF molecule from SMILES
+            mol = Molecule.from_smiles(smiles, allow_undefined_stereo=True)
 
-                # Print SMILES periodically
-                if i % 100 == 0:
-                    print(f"  SMILES: {smiles}")
+            # Generate 3D conformer
+            mol.generate_conformers(n_conformers=1)
 
-                # Create OpenFF molecule from SMILES
-                mol = Molecule.from_smiles(smiles, allow_undefined_stereo=True)
+            molecules.append(mol)
 
-                # Generate conformer (ZINC doesn't include 3D coords)
-                mol.generate_conformers(n_conformers=1)
-
-                molecules.append(mol)
-
-            except Exception as e:
-                print(f"  Failed on molecule {i}: {e}")
-                continue
+        except Exception as e:
+            print(f"  Failed on molecule {i}: {e}")
+            continue
 
     # Save
     output_path = Path(output_path)

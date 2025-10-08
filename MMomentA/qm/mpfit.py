@@ -107,32 +107,48 @@ class MPFITCalculator:
                 error_message="Molecule has no conformers"
             )
 
-        [input_conformer] = extract_conformers(molecule)
+        try:
+            [input_conformer] = extract_conformers(molecule)
 
-        conformer, multipoles = Psi4GDMAGenerator.generate(
-            molecule, input_conformer, self.qc_settings, minimize=self.config.minimize
-        )
+            conformer, multipoles = Psi4GDMAGenerator.generate(
+                molecule, input_conformer, self.qc_settings, minimize=self.config.minimize
+            )
 
-        qc_record = MoleculeGDMARecord.from_molecule(
-            molecule, conformer, multipoles, self.qc_settings
-        )
+            qc_record = MoleculeGDMARecord.from_molecule(
+                molecule, conformer, multipoles, self.qc_settings
+            )
 
-        charge_parameter = generate_mpfit_charge_parameter([qc_record], self.solver)
+            charge_parameter = generate_mpfit_charge_parameter([qc_record], self.solver)
 
-        charges = np.array(charge_parameter.value)
+            charges = np.array(charge_parameter.value)
 
-        elapsed = time.time() - start_time
+            elapsed = time.time() - start_time
 
-        return MPFITResult(
-            charges=charges,
-            multipole_moments=multipoles,
-            conformer=conformer,
-            time_seconds=elapsed,
-            smiles=charge_parameter.smiles,
-            metadata=self._get_metadata(),
-            success=True,
-            error_message=None
-        )
+            return MPFITResult(
+                charges=charges,
+                multipole_moments=multipoles,
+                conformer=conformer,
+                time_seconds=elapsed,
+                smiles=charge_parameter.smiles,
+                metadata=self._get_metadata(),
+                success=True,
+                error_message=None
+            )
+
+        except Exception as e:
+            # Catch all exceptions and convert to string to avoid pickling issues
+            elapsed = time.time() - start_time
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            return MPFITResult(
+                charges=np.zeros(molecule.n_atoms),
+                multipole_moments=None,
+                conformer=np.zeros((molecule.n_atoms, 3)),
+                time_seconds=elapsed,
+                smiles=smiles,
+                metadata=self._get_metadata(),
+                success=False,
+                error_message=error_msg
+            )
 
     def _get_metadata(self) -> Dict[str, Any]:
         """Get metadata dictionary for calculation settings."""

@@ -74,37 +74,51 @@ class AM1BCCCalculator:
         start_time = time.time()
         smiles = molecule.to_smiles(mapped=False)
 
-        errors = []
-        method_used = None
+        try:
+            errors = []
+            method_used = None
 
-        for method in self.config.fallback_methods:
-            molecule.assign_partial_charges(method)
-            charges = molecule.partial_charges.m_as(unit.elementary_charge)
-            method_used = method
-            break
+            for method in self.config.fallback_methods:
+                molecule.assign_partial_charges(method)
+                charges = molecule.partial_charges.m_as(unit.elementary_charge)
+                method_used = method
+                break
 
-        if method_used is None:
+            if method_used is None:
+                elapsed = time.time() - start_time
+                error_msg = "; ".join(errors)
+                return AM1BCCResult(
+                    charges=np.zeros(molecule.n_atoms),
+                    time_seconds=elapsed,
+                    smiles=smiles,
+                    metadata=self._get_metadata(None),
+                    success=False,
+                    error_message=f"All charge methods failed: {error_msg}"
+                )
+
             elapsed = time.time() - start_time
-            error_msg = "; ".join(errors)
+
+            return AM1BCCResult(
+                charges=charges.flatten(),
+                time_seconds=elapsed,
+                smiles=smiles,
+                metadata=self._get_metadata(method_used),
+                success=True,
+                error_message=None
+            )
+
+        except Exception as e:
+            # Catch all exceptions and convert to string to avoid pickling issues
+            elapsed = time.time() - start_time
+            error_msg = f"{type(e).__name__}: {str(e)}"
             return AM1BCCResult(
                 charges=np.zeros(molecule.n_atoms),
                 time_seconds=elapsed,
                 smiles=smiles,
                 metadata=self._get_metadata(None),
                 success=False,
-                error_message=f"All charge methods failed: {error_msg}"
+                error_message=error_msg
             )
-
-        elapsed = time.time() - start_time
-
-        return AM1BCCResult(
-            charges=charges.flatten(),
-            time_seconds=elapsed,
-            smiles=smiles,
-            metadata=self._get_metadata(method_used),
-            success=True,
-            error_message=None
-        )
 
     def _get_metadata(self, method_used: Optional[str]) -> Dict[str, Any]:
         """Get metadata dictionary for calculation settings."""

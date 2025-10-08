@@ -138,8 +138,9 @@ class RESPCalculator:
             )
 
         except Exception as e:
+            # Catch all exceptions and convert to string to avoid pickling issues
             elapsed = time.time() - start_time
-            error_msg = str(e)
+            error_msg = f"{type(e).__name__}: {str(e)}"
 
             # Get conformer for error result
             conformer_array = (

@@ -182,8 +182,11 @@ class BatchProcessor:
 
                     is_psi4_pickle_error = (
                         "BrokenProcessPool" in error_type or
+                        "TimeoutError" in error_type or
+                        "AssertionError" in error_type or
                         "Psi4Error" in error_msg or
                         "std_error" in error_msg or
+                        "result_handler" in error_msg or
                         "PicklingError" in error_msg
                     )
 

@@ -141,18 +141,37 @@ class BatchProcessor:
             ]
         else:
             logger.info(f"Running in parallel mode with {self.n_jobs} jobs")
-            results = Parallel(
-                n_jobs=self.n_jobs,
-                backend=self.backend,
-                verbose=self.verbose,
-                timeout=1800,
-                batch_size=1,
-                pre_dispatch='2*n_jobs',
-                max_nbytes=None
-            )(
-                delayed(self._process_single_molecule)(i, mol)
-                for i, mol in enumerate(molecules)
-            )
+            try:
+                results = Parallel(
+                    n_jobs=self.n_jobs,
+                    backend=self.backend,
+                    verbose=self.verbose,
+                    timeout=1800,
+                    batch_size=1,
+                    pre_dispatch='2*n_jobs',
+                    max_nbytes=None
+                )(
+                    delayed(self._process_single_molecule)(i, mol)
+                    for i, mol in enumerate(molecules)
+                )
+            except Exception as e:
+                # Catch BrokenProcessPool or pickling errors and fall back to sequential
+                error_type = type(e).__name__
+                if "BrokenProcessPool" in error_type or "PicklingError" in str(e) or "Psi4Error" in str(e):
+                    logger.warning(
+                        f"Parallel processing failed with {error_type}. "
+                        f"This is likely due to unpicklable Psi4 exceptions. "
+                        f"Falling back to sequential processing..."
+                    )
+                    # Retry all molecules sequentially
+                    results = []
+                    for i, mol in enumerate(molecules):
+                        logger.info(f"Processing molecule {i+1}/{n_molecules} sequentially...")
+                        result = self._process_single_molecule(i, mol)
+                        results.append(result)
+                else:
+                    # Different error - re-raise it
+                    raise
 
         elapsed = time.time() - start_time
 

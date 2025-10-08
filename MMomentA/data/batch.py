@@ -141,58 +141,64 @@ class BatchProcessor:
             ]
         else:
             logger.info(f"Running in parallel mode with {self.n_jobs} jobs")
-            import sys
-            import io
-            from contextlib import redirect_stderr
 
-            # Capture stderr to detect Psi4Error pickling issues
-            stderr_capture = io.StringIO()
+            # Use batching: process molecules in batches, so if one batch fails,
+            # we can retry just that batch sequentially
+            batch_size = 50  # Process 50 molecules at a time
+            results = []
 
-            try:
-                with redirect_stderr(stderr_capture):
-                    results = Parallel(
+            for batch_start in range(0, n_molecules, batch_size):
+                batch_end = min(batch_start + batch_size, n_molecules)
+                batch_molecules = molecules[batch_start:batch_end]
+                batch_indices = list(range(batch_start, batch_end))
+
+                logger.info(f"Processing batch {batch_start//batch_size + 1}: molecules {batch_start}-{batch_end-1}")
+
+                try:
+                    # Try parallel processing for this batch
+                    batch_results = Parallel(
                         n_jobs=self.n_jobs,
                         backend=self.backend,
-                        verbose=self.verbose,
+                        verbose=0,  # Reduce verbosity for batches
                         timeout=1800,
                         batch_size=1,
                         pre_dispatch='2*n_jobs',
                         max_nbytes=None
                     )(
-                        delayed(self._process_single_molecule)(i, mol)
-                        for i, mol in enumerate(molecules)
+                        delayed(self._process_single_molecule)(idx, mol)
+                        for idx, mol in zip(batch_indices, batch_molecules)
                     )
-            except Exception as e:
-                # Catch BrokenProcessPool or pickling errors and fall back to sequential
-                error_type = type(e).__name__
-                stderr_content = stderr_capture.getvalue()
+                    results.extend(batch_results)
+                    logger.info(f"  ✓ Batch completed successfully in parallel")
 
-                # Check if this is a Psi4Error pickling issue
-                is_psi4_pickle_error = (
-                    "BrokenProcessPool" in error_type or
-                    "Psi4Error.__init__()" in stderr_content or
-                    "missing 1 required positional argument: 'std_error'" in stderr_content or
-                    "PicklingError" in str(e)
-                )
+                except Exception as e:
+                    # This batch failed - check if it's a Psi4 pickling error
+                    error_type = type(e).__name__
+                    error_msg = str(e)
 
-                if is_psi4_pickle_error:
-                    logger.warning(
-                        f"Parallel processing failed due to Psi4Error pickling issue. "
-                        f"Error type: {error_type}. "
-                        f"Falling back to sequential processing for all {n_molecules} molecules..."
+                    is_psi4_pickle_error = (
+                        "BrokenProcessPool" in error_type or
+                        "Psi4Error" in error_msg or
+                        "std_error" in error_msg or
+                        "PicklingError" in error_msg
                     )
-                    # Retry all molecules sequentially
-                    results = []
-                    for i, mol in enumerate(molecules):
-                        if (i + 1) % 10 == 0 or i == 0:
-                            logger.info(f"Processing molecule {i+1}/{n_molecules} sequentially...")
-                        result = self._process_single_molecule(i, mol)
-                        results.append(result)
-                    logger.info("Sequential processing complete")
-                else:
-                    # Different error - re-raise it
-                    logger.error(f"Parallel processing failed with unexpected error: {error_type}")
-                    raise
+
+                    if is_psi4_pickle_error:
+                        logger.warning(
+                            f"  ✗ Batch failed with pickling error ({error_type}). "
+                            f"Retrying these {len(batch_molecules)} molecules sequentially..."
+                        )
+                        # Retry just this batch sequentially
+                        batch_results = []
+                        for idx, mol in zip(batch_indices, batch_molecules):
+                            result = self._process_single_molecule(idx, mol)
+                            batch_results.append(result)
+                        results.extend(batch_results)
+                        logger.info(f"  ✓ Batch completed sequentially")
+                    else:
+                        # Different error - re-raise
+                        logger.error(f"Batch failed with unexpected error: {error_type}")
+                        raise
 
         elapsed = time.time() - start_time
 

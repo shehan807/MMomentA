@@ -122,7 +122,7 @@ def main():
     parser.add_argument(
         "--eval-frequency",
         type=int,
-        default=10,
+        default=100,
         help="Evaluate on validation set every N epochs"
     )
     parser.add_argument(
@@ -206,11 +206,22 @@ def main():
     else:
         input_units = args.input_units
 
+    # CRITICAL: Scale width for multipole models to avoid information bottleneck
+    effective_width = args.width
+    if actual_feature_dim > 150 and args.width == 32:
+        # Multipole model needs proportionally more capacity
+        # 198/117 = 1.69x features → use 1.69x width
+        effective_width = int(args.width * (actual_feature_dim / 117))
+        logger.warning(f"Multipole model detected: scaling width {args.width} → {effective_width}")
+        logger.warning(f"Reason: {actual_feature_dim} features need more capacity than {args.width} units")
+
+    width = effective_width
+
     model_config = ModelConfig(
         feature_units=actual_feature_dim,
         input_units=input_units,
         depth=args.depth,
-        width=args.width,
+        width=width,  # Use effective_width (scaled for multipoles)
         activation=args.activation,
         batch_norm=args.batch_norm,
         dropout=args.dropout

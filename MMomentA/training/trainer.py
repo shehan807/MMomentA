@@ -42,7 +42,7 @@ class TrainingConfig:
     learning_rate: float = 1e-3
     weight_decay: float = 1e-5
     batch_size: int = 128
-    eval_frequency: int = 10
+    eval_frequency: int = 100
     checkpoint_dir: str = "checkpoints"
     save_frequency: int = 50
     early_stopping_patience: int = 0
@@ -100,11 +100,12 @@ class Trainer:
         )
 
         # Learning rate scheduler (reduce on plateau)
+        # With eval_frequency=100, patience=10 means 1000 epochs without improvement
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer,
             mode='min',
             factor=0.5,
-            patience=50,
+            patience=10,
             verbose=True,
             min_lr=1e-6
         )

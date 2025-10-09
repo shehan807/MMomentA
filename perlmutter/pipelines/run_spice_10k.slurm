@@ -150,7 +150,7 @@ echo "✓ SPICE 10k MPFIT dataset created"
 echo ""
 
 # Step 3: Train baseline model (no multipoles)
-echo "Step 3/6: Training baseline model (1000 epochs)..."
+echo "Step 3/6: Training baseline model (5000 epochs, espaloma-charge settings)..."
 conda activate "$ML_ENV"
 
 if [ -f "/global/u1/p/parmar/MoML/MMomentA/runs/spice_10k_baseline/checkpoints/best_model.pt" ]; then
@@ -160,22 +160,28 @@ else
         --dataset data/spice_10k_mpfit.h5 \
         --output-dir runs/spice_10k_baseline \
         --no-multipoles \
-        --n-epochs 1000 \
+        --n-epochs 5000 \
+        --width 32 \
+        --early-stopping-patience 2000 \
         --device cuda
     echo "✓ SPICE 10k baseline model trained"
 fi
 echo ""
 
-# Step 4: Train multipole model
-echo "Step 4/6: Training multipole model (1000 epochs)..."
+# Step 4: Train multipole model (with automatic width scaling)
+echo "Step 4/6: Training multipole model (5000 epochs, auto-scaled capacity)..."
 
 if [ -f "/global/u1/p/parmar/MoML/MMomentA/runs/spice_10k_multipoles/checkpoints/best_model.pt" ]; then
     echo "✓ SPICE 10k multipole model already trained (found checkpoint), skipping..."
 else
+    # Multipole: 198 features → auto-scales width from 32 to 54 (198/117 * 32)
+    # This maintains the same compression ratio as baseline
     python scripts/train_spice.py \
         --dataset data/spice_10k_mpfit.h5 \
         --output-dir runs/spice_10k_multipoles \
-        --n-epochs 1000 \
+        --n-epochs 5000 \
+        --width 32 \
+        --early-stopping-patience 2000 \
         --device cuda
     echo "✓ SPICE 10k multipole model trained"
 fi
@@ -197,11 +203,11 @@ print("\n" + "="*70)
 print("TRAINING RESULTS COMPARISON")
 print("="*70)
 
-print("\nBaseline Model (no multipoles):")
+print("\nBaseline Model (no multipoles, width=32):")
 print(f"  Test RMSE: {baseline_test['val_rmse']:.4f}")
 print(f"  Test MAE:  {baseline_test['val_mae']:.4f}")
 
-print("\nMultipole Model:")
+print("\nMultipole Model (auto-scaled width):")
 print(f"  Test RMSE: {multipole_test['val_rmse']:.4f}")
 print(f"  Test MAE:  {multipole_test['val_mae']:.4f}")
 
@@ -236,9 +242,12 @@ echo "================================================"
 echo "Job ID: ${SLURM_JOB_ID:-interactive}"
 echo "Total time: $SECONDS seconds ($((SECONDS/3600))h $((SECONDS%3600/60))m)"
 echo ""
-echo "Training results: runs/spice_10k_{baseline,multipoles}/"
+echo "Training results:"
+echo "  - Baseline:  runs/spice_10k_baseline/"
+echo "  - Multipole: runs/spice_10k_multipoles/"
 echo "ESP validation plots:"
-echo "  - ESP violin plot: figures/spice_10k_esp_validation/esp_validation_all_methods.png"
-echo "  - Carbon hexbin:   figures/spice_10k_esp_validation/carbon_charge_hexbin.png"
+echo "  - ESP MAE plot:  figures/spice_10k_esp_validation/esp_validation_mae.png"
+echo "  - ESP RMSE plot: figures/spice_10k_esp_validation/esp_validation_rmse.png"
+echo "  - Carbon hexbin: figures/spice_10k_esp_validation/carbon_charge_hexbin.png"
 echo "Validation metrics: figures/spice_10k_esp_validation/esp_validation_results.json"
 echo ""

@@ -94,72 +94,66 @@ else
 fi
 echo ""
 
-# Step 4: Train multipole model (IMPROVED HYPERPARAMETERS)
-# COMMENTED OUT - multipoles causing worse generalization
-# echo "Step 4/6: Training multipole model (1000 epochs, optimized settings)..."
-#
-# if [ -f "/global/u1/p/parmar/MoML/MMomentA/runs/zinc_1k_multipoles/checkpoints/best_model.pt" ]; then
-#     echo "✓ ZINC 1k multipole model already trained (found checkpoint), skipping..."
-# else
-#     python scripts/train_spice.py \
-#         --dataset data/zinc_1k_mpfit.h5 \
-#         --output-dir runs/zinc_1k_multipoles \
-#         --n-epochs 1000 \
-#         --width 256 \
-#         --input-units 256 \
-#         --batch-norm \
-#         --weight-decay 1e-6 \
-#         --device cuda
-#     echo "✓ ZINC 1k multipole model trained"
-# fi
-# echo ""
+# Step 4: Train multipole model (with automatic width scaling)
+echo "Step 4/6: Training multipole model (5000 epochs, auto-scaled capacity)..."
+
+if [ -f "/global/u1/p/parmar/MoML/MMomentA/runs/zinc_1k_multipoles/checkpoints/best_model.pt" ]; then
+    echo "✓ ZINC 1k multipole model already trained (found checkpoint), skipping..."
+else
+    # Multipole: 198 features → auto-scales width from 32 to 54 (198/117 * 32)
+    # This maintains the same compression ratio as baseline
+    python scripts/train_spice.py \
+        --dataset data/zinc_1k_mpfit.h5 \
+        --output-dir runs/zinc_1k_multipoles \
+        --n-epochs 5000 \
+        --width 32 \
+        --device cuda
+    echo "✓ ZINC 1k multipole model trained"
+fi
+echo ""
 
 # Step 5: Compare training results
-# COMMENTED OUT - multipole training disabled
-# echo "Step 5/6: Comparing training results..."
-#
-# python << 'EOF'
-# import json
-#
-# baseline = json.load(open('runs/zinc_1k_baseline/training_results.json'))
-# multipole = json.load(open('runs/zinc_1k_multipoles/training_results.json'))
-#
-# baseline_test = baseline['results']['test_metrics']
-# multipole_test = multipole['results']['test_metrics']
-#
-# print("\n" + "="*70)
-# print("TRAINING RESULTS COMPARISON")
-# print("="*70)
-#
-# print("\nBaseline Model (no multipoles):")
-# print(f"  Test RMSE: {baseline_test['val_rmse']:.4f}")
-# print(f"  Test MAE:  {baseline_test['val_mae']:.4f}")
-#
-# print("\nMultipole Model:")
-# print(f"  Test RMSE: {multipole_test['val_rmse']:.4f}")
-# print(f"  Test MAE:  {multipole_test['val_mae']:.4f}")
-#
-# improvement = ((baseline_test['val_rmse'] - multipole_test['val_rmse']) /
-#                baseline_test['val_rmse'] * 100)
-#
-# print(f"\nImprovement: {improvement:+.1f}%")
-# print("="*70)
-# EOF
-#
-# echo ""
+echo "Step 5/6: Comparing training results..."
 
-echo "Step 5/6: Skipping comparison (multipole training disabled)"
+python << 'EOF'
+import json
+
+baseline = json.load(open('runs/zinc_1k_baseline/training_results.json'))
+multipole = json.load(open('runs/zinc_1k_multipoles/training_results.json'))
+
+baseline_test = baseline['results']['test_metrics']
+multipole_test = multipole['results']['test_metrics']
+
+print("\n" + "="*70)
+print("TRAINING RESULTS COMPARISON")
+print("="*70)
+
+print("\nBaseline Model (no multipoles, width=32):")
+print(f"  Test RMSE: {baseline_test['val_rmse']:.4f}")
+print(f"  Test MAE:  {baseline_test['val_mae']:.4f}")
+
+print("\nMultipole Model (auto-scaled width):")
+print(f"  Test RMSE: {multipole_test['val_rmse']:.4f}")
+print(f"  Test MAE:  {multipole_test['val_mae']:.4f}")
+
+improvement = ((baseline_test['val_rmse'] - multipole_test['val_rmse']) /
+               baseline_test['val_rmse'] * 100)
+
+print(f"\nImprovement: {improvement:+.1f}%")
+print("="*70)
+EOF
+
 echo ""
 
 # Step 6: Validating ESP reproduction (MPFIT, AM1-BCC, RESP, MMomentA-GNN)
-echo "Step 6/6: Validating ESP reproduction (using baseline model)..."
+echo "Step 6/6: Validating ESP reproduction (using multipole model)..."
 conda activate "$DATA_ENV"
 
 mkdir -p figures/zinc_1k_esp_validation
 
 python scripts/validate_esp_comparison.py \
     --dataset data/zinc_1k_mpfit.h5 \
-    --model-dir runs/zinc_1k_baseline \
+    --model-dir runs/zinc_1k_multipoles \
     --output-dir figures/zinc_1k_esp_validation \
     --qm-method hf \
     --qm-basis "6-31G*" \
@@ -173,7 +167,9 @@ echo "================================================"
 echo "Job ID: ${SLURM_JOB_ID:-interactive}"
 echo "Total time: $SECONDS seconds ($((SECONDS/3600))h $((SECONDS%3600/60))m)"
 echo ""
-echo "Training results: runs/zinc_1k_baseline/"
+echo "Training results:"
+echo "  - Baseline:  runs/zinc_1k_baseline/"
+echo "  - Multipole: runs/zinc_1k_multipoles/"
 echo "ESP validation plots:"
 echo "  - ESP MAE plot:  figures/zinc_1k_esp_validation/esp_validation_mae.png"
 echo "  - ESP RMSE plot: figures/zinc_1k_esp_validation/esp_validation_rmse.png"

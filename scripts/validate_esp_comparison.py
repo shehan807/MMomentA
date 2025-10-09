@@ -55,8 +55,13 @@ BOHR_TO_ANGSTROM = 0.529177249
 
 def generate_esp_grid(molecule: Molecule, conformer_idx: int = 0,
                       vdw_scale_factors: List[float] = [1.4, 1.6, 1.8, 2.0],
-                      density: float = 1.0) -> np.ndarray:
-    """Generate RESP-style ESP grid points around molecule."""
+                      density: float = 0.15) -> np.ndarray:
+    """Generate RESP-style ESP grid points around molecule.
+
+    Args:
+        density: Grid point density (points per Å²). Default 0.15 gives ~2000 points
+                 for typical molecules. Original 1.0 gives ~16000 points (too many).
+    """
 
     # VDW radii in Angstroms
     vdw_radii = {
@@ -94,7 +99,7 @@ def generate_esp_grid(molecule: Molecule, conformer_idx: int = 0,
 def compute_qm_esp_psi4(molecule: Molecule, grid_points: np.ndarray,
                         qm_method: str = 'hf', qm_basis: str = '6-31G*',
                         conformer_idx: int = 0) -> np.ndarray:
-    """Compute QM ESP at grid points using Psi4."""
+    """Compute QM ESP at grid points using Psi4's built-in ESP calculator."""
 
     conformer = molecule.conformers[conformer_idx]
     coords = conformer.m_as('angstrom')
@@ -118,35 +123,27 @@ def compute_qm_esp_psi4(molecule: Molecule, grid_points: np.ndarray,
     })
 
     # Compute wavefunction
-    # Use tempfile instead of /dev/null (permission issues on some systems)
     psi4.core.set_output_file('psi4_output.dat', False)
     energy, wfn = psi4.energy(qm_method, return_wfn=True, molecule=psi4_mol)
 
-    # Compute ESP at grid points
+    # Use Psi4's built-in ESP calculator at our grid points
+    # This computes full QM ESP (nuclear + electronic contributions)
     esp_values = np.zeros(len(grid_points))
 
-    # Get density matrix and basis set
-    C = wfn.Ca()
-    eps = wfn.epsilon_a()
-    mints = psi4.core.MintsHelper(wfn.basisset())
+    # Convert grid points to Psi4 Matrix (in Bohr)
+    grid_bohr = grid_points / BOHR_TO_ANGSTROM
 
-    # Use Psi4's ESP calculator (simplified version)
-    # For production, would use Psi4's full ESP property calculator
-    # Here we approximate with point nuclear charges
-    for i, grid_point in enumerate(grid_points):
-        esp_val = 0.0
+    # Get ESP calculator
+    Vpot = psi4.core.VBase.build(wfn.basisset(), "RV")
+    Vpot.initialize()
 
-        # Nuclear contribution
-        for j, (atom, coord) in enumerate(zip(molecule.atoms, coords)):
-            distance_angstrom = np.linalg.norm(grid_point - coord)
-            if distance_angstrom > 1e-6:
-                # ESP in a.u. = charge / (distance_angstrom / bohr_to_angstrom)
-                esp_val += atom.atomic_number / (distance_angstrom / BOHR_TO_ANGSTROM)
+    # Compute ESP at each grid point using Psi4's native calculator
+    for i, point_bohr in enumerate(grid_bohr):
+        # Create Psi4 Vector3 for the point
+        psi4_point = psi4.core.Vector3(point_bohr[0], point_bohr[1], point_bohr[2])
 
-        # Electronic contribution would require full integration
-        # This is a simplified version - in production use Psi4's oeprop
-
-        esp_values[i] = esp_val
+        # Compute ESP (includes both nuclear and electronic contributions)
+        esp_values[i] = Vpot.compute_esp(wfn.Da(), [psi4_point])[0]
 
     return esp_values
 

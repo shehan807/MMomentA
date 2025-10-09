@@ -105,6 +105,7 @@ def compute_qm_esp_psi4(molecule: Molecule, grid_points: np.ndarray,
     coords = conformer.m_as('angstrom')
 
     # Build Psi4 molecule string
+    t_setup_start = time.time()
     mol_str = f"{molecule.total_charge.m} 1\n"
     for atom, coord in zip(molecule.atoms, coords):
         mol_str += f"{atom.symbol} {coord[0]:.10f} {coord[1]:.10f} {coord[2]:.10f}\n"
@@ -121,13 +122,17 @@ def compute_qm_esp_psi4(molecule: Molecule, grid_points: np.ndarray,
         'e_convergence': 1e-8,
         'd_convergence': 1e-8
     })
+    print(f"[DEBUG]     * Psi4 setup: {time.time() - t_setup_start:.2f}s")
 
     # Compute wavefunction
+    t_scf_start = time.time()
     psi4.core.set_output_file('psi4_output.dat', False)
     energy, wfn = psi4.energy(qm_method, return_wfn=True, molecule=psi4_mol)
+    print(f"[DEBUG]     * SCF calculation: {time.time() - t_scf_start:.2f}s")
 
     # Use Psi4's built-in ESP calculator at our grid points
     # This computes full QM ESP (nuclear + electronic contributions)
+    t_esp_calc_start = time.time()
     esp_values = np.zeros(len(grid_points))
 
     # Convert grid points to Psi4 Matrix (in Bohr)
@@ -144,6 +149,8 @@ def compute_qm_esp_psi4(molecule: Molecule, grid_points: np.ndarray,
 
         # Compute ESP (includes both nuclear and electronic contributions)
         esp_values[i] = Vpot.compute_esp(wfn.Da(), [psi4_point])[0]
+
+    print(f"[DEBUG]     * ESP evaluation at {len(grid_points)} points: {time.time() - t_esp_calc_start:.2f}s")
 
     return esp_values
 
@@ -233,6 +240,10 @@ def validate_single_molecule(idx: int, mol_data: MoleculeData, model_dir: Path,
     from openff.toolkit import Molecule
     from openff.units import unit
 
+    # [DEBUG] Track timing for this molecule
+    t_molecule_start = time.time()
+    print(f"[DEBUG] Molecule {idx}: Starting validation")
+
     # Force single-threaded execution to avoid thread oversubscription
     # when running many workers in parallel
     os.environ['OMP_NUM_THREADS'] = '1'
@@ -241,7 +252,9 @@ def validate_single_molecule(idx: int, mol_data: MoleculeData, model_dir: Path,
     os.environ['NUMEXPR_NUM_THREADS'] = '1'
 
     # Load model (each worker loads its own copy)
+    t_load_start = time.time()
     model = load_model(model_dir, device=device)
+    print(f"[DEBUG] Molecule {idx}: Model loaded in {time.time() - t_load_start:.2f}s")
 
     try:
         mpfit_charges = mol_data.target_charges
@@ -251,9 +264,12 @@ def validate_single_molecule(idx: int, mol_data: MoleculeData, model_dir: Path,
         t_gnn_start = time.time()
         gnn_charges = predict_charges(model, mol_data, device=device)
         gnn_inference_time = time.time() - t_gnn_start
+        print(f"[DEBUG] Molecule {idx}: GNN prediction in {gnn_inference_time:.2f}s")
 
         # Reconstruct molecule
+        t_mol_start = time.time()
         molecule = Molecule.from_smiles(mol_data.smiles, allow_undefined_stereo=True)
+        print(f"[DEBUG] Molecule {idx}: Molecule from SMILES in {time.time() - t_mol_start:.2f}s")
 
         if not molecule.conformers:
             if mol_data.conformer is not None:
@@ -264,21 +280,27 @@ def validate_single_molecule(idx: int, mol_data: MoleculeData, model_dir: Path,
             molecule.conformers[0] = mol_data.conformer * unit.angstrom
 
         # Use temporary directory for Psi4 scratch files
+        print(f"[DEBUG] Molecule {idx}: Starting ESP validation")
+        t_esp_start = time.time()
         with tempfile.TemporaryDirectory(prefix=f'esp_val_{idx}_') as temp_dir:
             os.environ['PSI_SCRATCH'] = temp_dir
 
-            # Validate ESP
+            # Validate ESP (disable AM1-BCC and RESP for speed - they add ~1-2 min each)
             validation = validate_molecule_esp(
                 molecule, mpfit_charges, gnn_charges,
                 qm_method=qm_method,
                 qm_basis=qm_basis,
-                include_am1bcc=True,
-                include_resp=True
+                include_am1bcc=False,
+                include_resp=False
             )
+        print(f"[DEBUG] Molecule {idx}: ESP validation completed in {time.time() - t_esp_start:.2f}s")
 
         # Extract atomic numbers for carbon filtering
         atomic_numbers = mol_data.atomic_features['atomic_numbers']
         carbon_mask = (atomic_numbers == 6)
+
+        total_time = time.time() - t_molecule_start
+        print(f"[DEBUG] Molecule {idx}: TOTAL TIME = {total_time:.2f}s")
 
         return {
             'idx': idx,
@@ -293,6 +315,7 @@ def validate_single_molecule(idx: int, mol_data: MoleculeData, model_dir: Path,
 
     except Exception as e:
         logger.error(f"Failed to validate molecule {idx}: {e}")
+        print(f"[DEBUG] Molecule {idx}: FAILED after {time.time() - t_molecule_start:.2f}s")
         return {
             'idx': idx,
             'success': False,
@@ -335,24 +358,31 @@ def validate_molecule_esp(molecule: Molecule, mpfit_charges: np.ndarray,
 
     try:
         # Generate ESP grid
+        t_grid_start = time.time()
         grid_points = generate_esp_grid(molecule, conformer_idx=conformer_idx)
+        print(f"[DEBUG]   - Grid generation: {time.time() - t_grid_start:.2f}s ({len(grid_points)} points)")
 
         # Compute QM ESP
+        t_qm_start = time.time()
         qm_esp = compute_qm_esp_psi4(molecule, grid_points, qm_method, qm_basis, conformer_idx)
+        print(f"[DEBUG]   - QM ESP computation: {time.time() - t_qm_start:.2f}s")
 
         # Get coordinates
         conformer = molecule.conformers[conformer_idx]
         coords = conformer.m_as('angstrom')
 
         # Calculate ESP from MPFIT charges
+        t_mpfit_start = time.time()
         mpfit_esp = calculate_esp_from_charges(coords, mpfit_charges, grid_points)
         mpfit_metrics = compare_grid_esp(qm_esp, mpfit_esp, verbose=False)
+        print(f"[DEBUG]   - MPFIT ESP calc: {time.time() - t_mpfit_start:.2f}s")
 
         # Calculate ESP from GNN charges (time this since it's inference)
         t_gnn_start = time.time()
         gnn_esp = calculate_esp_from_charges(coords, gnn_charges, grid_points)
         gnn_metrics = compare_grid_esp(qm_esp, gnn_esp, verbose=False)
         gnn_metrics['time'] = time.time() - t_gnn_start
+        print(f"[DEBUG]   - GNN ESP calc: {time.time() - t_gnn_start:.2f}s")
 
         result = {
             'success': True,
@@ -364,12 +394,14 @@ def validate_molecule_esp(molecule: Molecule, mpfit_charges: np.ndarray,
         # Optionally compute AM1-BCC charges and ESP
         if include_am1bcc:
             try:
+                print(f"[DEBUG]   - Computing AM1-BCC charges...")
                 t_am1bcc_start = time.time()
                 am1bcc_charges = compute_am1bcc_charges(molecule)
                 am1bcc_esp = calculate_esp_from_charges(coords, am1bcc_charges, grid_points)
                 am1bcc_metrics = compare_grid_esp(qm_esp, am1bcc_esp, verbose=False)
                 am1bcc_metrics['time'] = time.time() - t_am1bcc_start
                 result['am1bcc'] = am1bcc_metrics
+                print(f"[DEBUG]   - AM1-BCC completed: {am1bcc_metrics['time']:.2f}s")
             except Exception as e:
                 logger.warning(f"AM1-BCC failed: {e}")
                 result['am1bcc'] = None
@@ -377,12 +409,14 @@ def validate_molecule_esp(molecule: Molecule, mpfit_charges: np.ndarray,
         # Optionally compute RESP charges and ESP
         if include_resp:
             try:
+                print(f"[DEBUG]   - Computing RESP charges...")
                 t_resp_start = time.time()
                 resp_charges = compute_resp_charges(molecule, qm_method, qm_basis, conformer_idx)
                 resp_esp = calculate_esp_from_charges(coords, resp_charges, grid_points)
                 resp_metrics = compare_grid_esp(qm_esp, resp_esp, verbose=False)
                 resp_metrics['time'] = time.time() - t_resp_start
                 result['resp'] = resp_metrics
+                print(f"[DEBUG]   - RESP completed: {resp_metrics['time']:.2f}s")
             except Exception as e:
                 logger.warning(f"RESP failed: {e}")
                 result['resp'] = None

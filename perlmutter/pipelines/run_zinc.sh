@@ -55,28 +55,34 @@ echo ""
 echo "Step 3/6: Training baseline model (1000 epochs)..."
 conda activate "$ML_ENV"
 
-# Note: train_spice.py works with any HDF5 dataset (not just SPICE)
-python scripts/train_spice.py \
-    --dataset data/zinc_mpfit.h5 \
-    --output-dir runs/zinc_baseline \
-    --no-multipoles \
-    --n-epochs 1000 \
-    --device cuda
-
-echo "✓ ZINC baseline model trained"
+if [ -f "runs/zinc_baseline/checkpoints/best_model.pt" ]; then
+    echo "✓ ZINC baseline model already trained (found checkpoint), skipping..."
+else
+    # Note: train_spice.py works with any HDF5 dataset (not just SPICE)
+    python scripts/train_spice.py \
+        --dataset data/zinc_mpfit.h5 \
+        --output-dir runs/zinc_baseline \
+        --no-multipoles \
+        --n-epochs 1000 \
+        --device cuda
+    echo "✓ ZINC baseline model trained"
+fi
 echo ""
 
 # Step 4: Train multipole model
 echo "Step 4/6: Training multipole model (1000 epochs)..."
 
-# Note: train_spice.py works with any HDF5 dataset (not just SPICE)
-python scripts/train_spice.py \
-    --dataset data/zinc_mpfit.h5 \
-    --output-dir runs/zinc_multipoles \
-    --n-epochs 1000 \
-    --device cuda
-
-echo "✓ ZINC multipole model trained"
+if [ -f "runs/zinc_multipoles/checkpoints/best_model.pt" ]; then
+    echo "✓ ZINC multipole model already trained (found checkpoint), skipping..."
+else
+    # Note: train_spice.py works with any HDF5 dataset (not just SPICE)
+    python scripts/train_spice.py \
+        --dataset data/zinc_mpfit.h5 \
+        --output-dir runs/zinc_multipoles \
+        --n-epochs 1000 \
+        --device cuda
+    echo "✓ ZINC multipole model trained"
+fi
 echo ""
 
 # Step 5: Compare training results

@@ -72,7 +72,7 @@ python scripts/prepare_dataset_cached.py \
     --train-frac 0.7 \
     --val-frac 0.15 \
     --test-frac 0.15 \
-    --n-jobs -1
+    --n-jobs 32
 
 echo "✓ ZINC 10k MPFIT dataset created"
 echo ""
@@ -161,7 +161,7 @@ python scripts/validate_esp_comparison.py \
     --qm-method hf \
     --qm-basis "6-31G*" \
     --device cpu \
-    --n-jobs 16
+    --n-jobs 32
 
 echo ""
 echo "================================================"

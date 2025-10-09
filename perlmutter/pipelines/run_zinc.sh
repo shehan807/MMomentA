@@ -6,7 +6,7 @@
 MMOMENTA_DIR="${MMOMENTA_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 
 echo "================================================"
-echo "MMomentA ZINC Pipeline (Perlmutter)"
+echo "MMomentA ZINC 2k Pipeline (Perlmutter)"
 echo "================================================"
 echo "Working directory: $MMOMENTA_DIR"
 echo ""
@@ -24,11 +24,11 @@ cd "$MMOMENTA_DIR"
 echo "Step 1/6: Downloading ZINC dataset (PyTorch Geometric)..."
 conda activate "$ML_ENV"
 
-# Download ZINC using PyG (1000 molecules from train split)
+# Download ZINC using PyG (2000 molecules from train split)
 python scripts/download_pyg_dataset.py \
     --dataset zinc \
-    --output data/zinc_molecules.pkl \
-    --max-molecules 1000 \
+    --output data/zinc_2k_molecules.pkl \
+    --max-molecules 2000 \
     --split train
 
 echo "✓ ZINC molecules downloaded"
@@ -39,9 +39,9 @@ echo "Step 2/6: Computing MPFIT charges for ZINC (cached if previously run)..."
 conda activate "$DATA_ENV"
 
 python scripts/prepare_dataset_cached.py \
-    --input data/zinc_molecules.pkl \
-    --output data/zinc_mpfit.h5 \
-    --dataset-name "ZINC" \
+    --input data/zinc_2k_molecules.pkl \
+    --output data/zinc_2k_mpfit.h5 \
+    --dataset-name "ZINC_2k" \
     --split-strategy random \
     --train-frac 0.7 \
     --val-frac 0.15 \
@@ -55,38 +55,38 @@ echo ""
 echo "Step 3/6: Training baseline model (5000 epochs, espaloma-charge settings)..."
 conda activate "$ML_ENV"
 
-if [ -f "/global/u1/p/parmar/MoML/MMomentA/runs/zinc_baseline/checkpoints/best_model.pt" ]; then
-    echo "✓ ZINC baseline model already trained (found checkpoint), skipping..."
+if [ -f "/global/u1/p/parmar/MoML/MMomentA/runs/zinc_2k_baseline/checkpoints/best_model.pt" ]; then
+    echo "✓ ZINC 2k baseline model already trained (found checkpoint), skipping..."
 else
     # Baseline: espaloma-charge settings (width=32, input=128, 5000 epochs)
     python scripts/train_spice.py \
-        --dataset data/zinc_mpfit.h5 \
-        --output-dir runs/zinc_baseline \
+        --dataset data/zinc_2k_mpfit.h5 \
+        --output-dir runs/zinc_2k_baseline \
         --no-multipoles \
         --n-epochs 5000 \
         --width 32 \
         --early-stopping-patience 2000 \
         --device cuda
-    echo "✓ ZINC baseline model trained"
+    echo "✓ ZINC 2k baseline model trained"
 fi
 echo ""
 
 # Step 4: Train multipole model (with automatic width scaling)
 echo "Step 4/6: Training multipole model (5000 epochs, auto-scaled capacity)..."
 
-if [ -f "/global/u1/p/parmar/MoML/MMomentA/runs/zinc_multipoles/checkpoints/best_model.pt" ]; then
-    echo "✓ ZINC multipole model already trained (found checkpoint), skipping..."
+if [ -f "/global/u1/p/parmar/MoML/MMomentA/runs/zinc_2k_multipoles/checkpoints/best_model.pt" ]; then
+    echo "✓ ZINC 2k multipole model already trained (found checkpoint), skipping..."
 else
     # Multipole: 198 features → auto-scales width from 32 to 54 (198/117 * 32)
     # This maintains the same compression ratio as baseline
     python scripts/train_spice.py \
-        --dataset data/zinc_mpfit.h5 \
-        --output-dir runs/zinc_multipoles \
+        --dataset data/zinc_2k_mpfit.h5 \
+        --output-dir runs/zinc_2k_multipoles \
         --n-epochs 5000 \
         --width 32 \
         --early-stopping-patience 2000 \
         --device cuda
-    echo "✓ ZINC multipole model trained"
+    echo "✓ ZINC 2k multipole model trained"
 fi
 echo ""
 
@@ -96,8 +96,8 @@ echo "Step 5/6: Comparing training results..."
 python << 'EOF'
 import json
 
-baseline = json.load(open('runs/zinc_baseline/training_results.json'))
-multipole = json.load(open('runs/zinc_multipoles/training_results.json'))
+baseline = json.load(open('runs/zinc_2k_baseline/training_results.json'))
+multipole = json.load(open('runs/zinc_2k_multipoles/training_results.json'))
 
 baseline_test = baseline['results']['test_metrics']
 multipole_test = multipole['results']['test_metrics']
@@ -127,12 +127,12 @@ echo ""
 echo "Step 6/6: Validating ESP reproduction (using multipole model)..."
 conda activate "$DATA_ENV"
 
-mkdir -p figures/zinc_esp_validation
+mkdir -p figures/zinc_2k_esp_validation
 
 python scripts/validate_esp_comparison.py \
-    --dataset data/zinc_mpfit.h5 \
-    --model-dir runs/zinc_multipoles \
-    --output-dir figures/zinc_esp_validation \
+    --dataset data/zinc_2k_mpfit.h5 \
+    --model-dir runs/zinc_2k_multipoles \
+    --output-dir figures/zinc_2k_esp_validation \
     --qm-method hf \
     --qm-basis "6-31G*" \
     --device cpu \
@@ -140,14 +140,14 @@ python scripts/validate_esp_comparison.py \
 
 echo ""
 echo "================================================"
-echo "ZINC Pipeline Complete!"
+echo "ZINC 2k Pipeline Complete!"
 echo "================================================"
 echo "Training results:"
-echo "  - Baseline:  runs/zinc_baseline/"
-echo "  - Multipole: runs/zinc_multipoles/"
+echo "  - Baseline:  runs/zinc_2k_baseline/"
+echo "  - Multipole: runs/zinc_2k_multipoles/"
 echo "ESP validation plots:"
-echo "  - ESP MAE plot:  figures/zinc_esp_validation/esp_validation_mae.png"
-echo "  - ESP RMSE plot: figures/zinc_esp_validation/esp_validation_rmse.png"
-echo "  - Carbon hexbin: figures/zinc_esp_validation/carbon_charge_hexbin.png"
-echo "Validation metrics: figures/zinc_esp_validation/esp_validation_results.json"
+echo "  - ESP MAE plot:  figures/zinc_2k_esp_validation/esp_validation_mae.png"
+echo "  - ESP RMSE plot: figures/zinc_2k_esp_validation/esp_validation_rmse.png"
+echo "  - Carbon hexbin: figures/zinc_2k_esp_validation/carbon_charge_hexbin.png"
+echo "Validation metrics: figures/zinc_2k_esp_validation/esp_validation_results.json"
 echo ""

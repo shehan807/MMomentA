@@ -122,6 +122,9 @@ def compute_qm_esp_psi4(molecule: Molecule, grid_points: np.ndarray,
         'e_convergence': 1e-8,
         'd_convergence': 1e-8
     })
+
+    # Force Psi4 to use only 1 thread (critical for parallel workers)
+    psi4.set_num_threads(1)
     print(f"[DEBUG]     * Psi4 setup: {time.time() - t_setup_start:.2f}s")
 
     # Compute wavefunction
@@ -451,8 +454,8 @@ def main():
                        help="Basis set for ESP calculation")
     parser.add_argument("--device", type=str, default="cpu",
                        help="Device for model inference")
-    parser.add_argument("--n-jobs", type=int, default=32,
-                       help="Number of parallel jobs for ESP validation (default: 32, -1 for all CPUs)")
+    parser.add_argument("--n-jobs", type=int, default=8,
+                       help="Number of parallel jobs for ESP validation (default: 8, too many causes Psi4 deadlock)")
 
     args = parser.parse_args()
 

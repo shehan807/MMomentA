@@ -409,3 +409,118 @@ def create_esp_violin_plot(metrics: Dict,
     plt.close()
 
     return str(output_file)
+
+
+def create_carbon_charge_hexbin(q_ref: np.ndarray,
+                                q_pred: np.ndarray,
+                                output_dir: str = ".",
+                                figsize: Tuple[float, float] = (7, 6.5)) -> str:
+    """Create publication-quality 2D histogram (hexbin) of carbon atom charges.
+
+    Parameters
+    ----------
+    q_ref : np.ndarray
+        Reference charges (MPFIT) for carbon atoms only, shape (M,)
+    q_pred : np.ndarray
+        Predicted charges (MMomentA-GNN) for carbon atoms only, shape (M,)
+    output_dir : str
+        Directory to save output plot
+    figsize : tuple
+        Figure size (width, height)
+
+    Returns
+    -------
+    str
+        Path to saved plot file
+    """
+
+    setup_publication_style()
+
+    # Filter out NaNs and infs
+    valid_mask = np.isfinite(q_ref) & np.isfinite(q_pred)
+    q_ref = q_ref[valid_mask]
+    q_pred = q_pred[valid_mask]
+
+    if len(q_ref) == 0:
+        raise ValueError("No valid carbon atom charges after filtering NaNs/infs")
+
+    # Determine plot limits (5% expansion)
+    q_min = min(q_ref.min(), q_pred.min())
+    q_max = max(q_ref.max(), q_pred.max())
+    q_range = q_max - q_min
+    plot_min = q_min - 0.05 * q_range
+    plot_max = q_max + 0.05 * q_range
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Create 2D hexbin histogram
+    hexbin = ax.hexbin(q_ref, q_pred,
+                       gridsize=100,
+                       C=None,  # Use count
+                       reduce_C_function=np.size,
+                       cmap='viridis',
+                       mincnt=1,
+                       extent=(plot_min, plot_max, plot_min, plot_max),
+                       linewidths=0.1,
+                       edgecolors='none')
+
+    # Convert counts to log10 scale
+    counts = hexbin.get_array()
+    log_counts = np.log10(counts)
+    hexbin.set_array(log_counts)
+
+    # Colorbar
+    cbar = plt.colorbar(hexbin, ax=ax)
+    cbar.set_label('$\\log_{10}$(N)', fontsize=10, fontweight='bold')
+    cbar.ax.tick_params(labelsize=8)
+
+    # Parity line (y = x)
+    ax.plot([plot_min, plot_max], [plot_min, plot_max],
+            'k--', linewidth=1.0, alpha=0.7, zorder=10, label='Parity')
+
+    # Accuracy bands (y = x ± 0.05)
+    ax.plot([plot_min, plot_max], [plot_min + 0.05, plot_max + 0.05],
+            'k-', linewidth=0.5, alpha=0.5, zorder=9)
+    ax.plot([plot_min, plot_max], [plot_min - 0.05, plot_max - 0.05],
+            'k-', linewidth=0.5, alpha=0.5, zorder=9)
+
+    # Compute robust statistics (linear fit)
+    from scipy import stats
+    slope, intercept, r_value, p_value, std_err = stats.linregress(q_ref, q_pred)
+    r_squared = r_value ** 2
+
+    # Add statistics annotation (top-left corner)
+    stats_text = f'Slope: {slope:.3f}\n$R^2$: {r_squared:.4f}'
+    ax.text(0.05, 0.95, stats_text,
+            transform=ax.transAxes,
+            fontsize=8,
+            verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='gray', linewidth=0.5))
+
+    # Labels and formatting
+    ax.set_xlabel('Reference charge (e)', fontsize=10, fontweight='bold')
+    ax.set_ylabel('Predicted charge (e)', fontsize=10, fontweight='bold')
+    ax.tick_params(axis='both', which='major', labelsize=9)
+
+    # Set equal aspect and limits
+    ax.set_xlim(plot_min, plot_max)
+    ax.set_ylim(plot_min, plot_max)
+    ax.set_aspect('equal', adjustable='box')
+
+    # Clean styling (no grid, thin spines)
+    ax.grid(False)
+    for spine in ax.spines.values():
+        spine.set_linewidth(0.8)
+
+    # Tight layout
+    plt.tight_layout()
+
+    # Save plot
+    output_file = Path(output_dir) / "carbon_charge_hexbin.png"
+    plt.savefig(output_file, dpi=300, bbox_inches='tight', facecolor='white')
+
+    print(f"✓ Carbon charge hexbin plot saved to: {output_file}")
+    plt.close()
+
+    return str(output_file)

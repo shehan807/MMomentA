@@ -55,6 +55,7 @@ echo ""
 echo "Step 3/6: Training baseline model (1000 epochs)..."
 conda activate "$ML_ENV"
 
+# Note: train_spice.py works with any HDF5 dataset (not just SPICE)
 python scripts/train_spice.py \
     --dataset data/zinc_mpfit.h5 \
     --output-dir runs/zinc_baseline \
@@ -68,6 +69,7 @@ echo ""
 # Step 4: Train multipole model
 echo "Step 4/6: Training multipole model (1000 epochs)..."
 
+# Note: train_spice.py works with any HDF5 dataset (not just SPICE)
 python scripts/train_spice.py \
     --dataset data/zinc_mpfit.h5 \
     --output-dir runs/zinc_multipoles \
@@ -130,6 +132,8 @@ echo "================================================"
 echo "ZINC Pipeline Complete!"
 echo "================================================"
 echo "Training results: runs/zinc_{baseline,multipoles}/"
-echo "ESP validation: figures/zinc_esp_validation/esp_validation_all_methods.png"
+echo "ESP validation plots:"
+echo "  - ESP violin plot: figures/zinc_esp_validation/esp_validation_all_methods.png"
+echo "  - Carbon hexbin:   figures/zinc_esp_validation/carbon_charge_hexbin.png"
 echo "Validation metrics: figures/zinc_esp_validation/esp_validation_results.json"
 echo ""

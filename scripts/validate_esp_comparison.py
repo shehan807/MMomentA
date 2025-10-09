@@ -372,6 +372,10 @@ def main():
         'gnn': {'mae': [], 'rmse': [], 'time': []}
     }
 
+    # Collect carbon atom charges for hexbin plot
+    carbon_charges_ref = []  # MPFIT charges for carbon atoms
+    carbon_charges_pred = []  # GNN charges for carbon atoms
+
     successful = 0
     failed = 0
 
@@ -436,6 +440,15 @@ def main():
             results['gnn']['rmse'].append(validation['gnn']['rmse'])
             # Total GNN time = inference + ESP calculation
             results['gnn']['time'].append(gnn_inference_time + validation['gnn']['time'])
+
+            # Collect carbon atom charges for hexbin plot
+            # Extract atomic numbers from mol_data
+            atomic_numbers = mol_data.atomic_features[:, 0]  # First column is atomic number
+            carbon_mask = (atomic_numbers == 6)  # Carbon = atomic number 6
+
+            carbon_charges_ref.extend(mpfit_charges[carbon_mask])
+            carbon_charges_pred.extend(gnn_charges[carbon_mask])
+
             successful += 1
         else:
             failed += 1
@@ -555,12 +568,25 @@ def main():
     logger.info("\nGenerating comparison plots...")
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent / 'figures'))
-    from plot_comparison import create_esp_violin_plot
+    from plot_comparison import create_esp_violin_plot, create_carbon_charge_hexbin
 
+    # ESP violin plot
     plot_file = create_esp_violin_plot(results, output_dir=output_dir,
                                        qm_method=args.qm_method, qm_basis=args.qm_basis)
+    logger.info(f"✓ ESP violin plot saved to {plot_file}")
 
-    logger.info(f"✓ Plot saved to {plot_file}")
+    # Carbon charge hexbin plot
+    if len(carbon_charges_ref) > 0:
+        logger.info(f"\nGenerating carbon charge hexbin plot ({len(carbon_charges_ref)} carbon atoms)...")
+        hexbin_file = create_carbon_charge_hexbin(
+            np.array(carbon_charges_ref),
+            np.array(carbon_charges_pred),
+            output_dir=output_dir
+        )
+        logger.info(f"✓ Carbon hexbin plot saved to {hexbin_file}")
+    else:
+        logger.warning("No carbon atoms found in dataset - skipping hexbin plot")
+
     logger.info("\nDone!")
 
 

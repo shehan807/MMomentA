@@ -64,9 +64,12 @@ def extract_atomic_features(molecule: Molecule) -> Dict[str, np.ndarray]:
     formal_charges = np.array([atom.formal_charge.m for atom in molecule.atoms])
     is_aromatic = np.array([atom.is_aromatic for atom in molecule.atoms], dtype=float)
 
+    import warnings
     degree = np.array([atom.GetTotalDegree() for atom in rdkit_mol.GetAtoms()])
-    # GetTotalValence() without arguments works in all RDKit versions
-    valence = np.array([atom.GetTotalValence() for atom in rdkit_mol.GetAtoms()])
+    # Suppress RDKit deprecation warning for GetTotalValence()
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=".*GetValence.*")
+        valence = np.array([atom.GetTotalValence() for atom in rdkit_mol.GetAtoms()])
     explicit_valence = np.array([atom.GetExplicitValence() for atom in rdkit_mol.GetAtoms()])
 
     hybridization = np.zeros((n_atoms, 5))
@@ -190,10 +193,14 @@ def extract_molecule_data(
     graph_structure = extract_graph_structure(molecule)
     target_charges = mpfit_result.charges
 
+    # Get molecule total charge (default to 0 for neutral molecules)
+    total_charge = molecule.total_charge.m if hasattr(molecule, 'total_charge') else 0
+
     qm_metadata = {
         **mpfit_result.metadata,
         'calculation_time': mpfit_result.time_seconds,
-        'conformer_optimized': mpfit_result.metadata.get('minimize', True)
+        'conformer_optimized': mpfit_result.metadata.get('minimize', True),
+        'total_charge': total_charge
     }
 
     mol_data = MoleculeData(

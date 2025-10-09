@@ -160,15 +160,6 @@ results = trainer.train(
 print(f"Test RMSE: {results['test_metrics']['val_rmse']:.5f}")
 ```
 
-## Performance
-
-Expected performance on SPICE dataset:
-
-| Model | Features | Test RMSE (e) | Speedup vs QM |
-|-------|----------|---------------|---------------|
-| Baseline | 117 | ~0.045 | 100-1000x |
-| + Multipoles | 198 | **<0.040** | 100-1000x |
-
 ## Design Principles
 
 Following your requirements:

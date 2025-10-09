@@ -82,28 +82,31 @@ conda activate "$ML_ENV"
 if [ -f "/global/u1/p/parmar/MoML/MMomentA/runs/qm9_10k_baseline/checkpoints/best_model.pt" ]; then
     echo "✓ QM9 10k baseline model already trained (found checkpoint), skipping..."
 else
-    # Note: train_spice.py works with any HDF5 dataset (not just SPICE)
     python scripts/train_spice.py \
         --dataset data/qm9_10k_mpfit.h5 \
         --output-dir runs/qm9_10k_baseline \
         --no-multipoles \
         --n-epochs 1000 \
+        --width 128 \
         --device cuda
     echo "✓ QM9 10k baseline model trained"
 fi
 echo ""
 
-# Step 4: Train multipole model
-echo "Step 4/6: Training multipole model (1000 epochs)..."
+# Step 4: Train multipole model (IMPROVED HYPERPARAMETERS)
+echo "Step 4/6: Training multipole model (1000 epochs, optimized settings)..."
 
 if [ -f "/global/u1/p/parmar/MoML/MMomentA/runs/qm9_10k_multipoles/checkpoints/best_model.pt" ]; then
     echo "✓ QM9 10k multipole model already trained (found checkpoint), skipping..."
 else
-    # Note: train_spice.py works with any HDF5 dataset (not just SPICE)
     python scripts/train_spice.py \
         --dataset data/qm9_10k_mpfit.h5 \
         --output-dir runs/qm9_10k_multipoles \
         --n-epochs 1000 \
+        --width 256 \
+        --input-units 256 \
+        --batch-norm \
+        --weight-decay 1e-6 \
         --device cuda
     echo "✓ QM9 10k multipole model trained"
 fi

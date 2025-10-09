@@ -72,10 +72,27 @@ def main():
         help="Hidden dimension for graph convolution"
     )
     parser.add_argument(
+        "--input-units",
+        type=int,
+        default=None,
+        help="Input projection dimension (default: 128 for baseline, 256 for multipoles)"
+    )
+    parser.add_argument(
         "--activation",
         type=str,
         default="relu",
         help="Activation function"
+    )
+    parser.add_argument(
+        "--batch-norm",
+        action="store_true",
+        help="Enable batch normalization"
+    )
+    parser.add_argument(
+        "--dropout",
+        type=float,
+        default=0.0,
+        help="Dropout probability"
     )
 
     parser.add_argument(
@@ -181,11 +198,25 @@ def main():
     if args.feature_units != actual_feature_dim:
         logger.warning(f"Overriding --feature-units {args.feature_units} with detected dimension {actual_feature_dim}")
 
+    # Smart defaults for input_units based on feature dimension
+    if args.input_units is None:
+        if actual_feature_dim > 150:  # Multipole model
+            input_units = 256
+            logger.info(f"Auto-setting input_units=256 for multipole model (features={actual_feature_dim})")
+        else:  # Baseline model
+            input_units = 128
+            logger.info(f"Auto-setting input_units=128 for baseline model (features={actual_feature_dim})")
+    else:
+        input_units = args.input_units
+
     model_config = ModelConfig(
         feature_units=actual_feature_dim,
+        input_units=input_units,
         depth=args.depth,
         width=args.width,
-        activation=args.activation
+        activation=args.activation,
+        batch_norm=args.batch_norm,
+        dropout=args.dropout
     )
 
     logger.info("Creating model...")

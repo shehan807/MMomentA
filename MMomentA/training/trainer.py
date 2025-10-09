@@ -99,6 +99,16 @@ class Trainer:
             weight_decay=config.weight_decay
         )
 
+        # Learning rate scheduler (reduce on plateau)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer,
+            mode='min',
+            factor=0.5,
+            patience=50,
+            verbose=True,
+            min_lr=1e-6
+        )
+
         self.criterion = nn.MSELoss()
 
         self.metrics_tracker = MetricsTracker()
@@ -227,10 +237,14 @@ class Trainer:
                 epoch_metrics = {**train_metrics, **val_metrics}
                 self.metrics_tracker.update(epoch_metrics)
 
+                # Step learning rate scheduler
+                self.scheduler.step(val_metrics['val_rmse'])
+
                 logger.info(
                     f"Epoch {epoch}/{self.config.n_epochs} - "
                     f"Train RMSE: {train_metrics['train_rmse']:.5f}, "
-                    f"Val RMSE: {val_metrics['val_rmse']:.5f}"
+                    f"Val RMSE: {val_metrics['val_rmse']:.5f}, "
+                    f"LR: {self.optimizer.param_groups[0]['lr']:.2e}"
                 )
 
                 if val_metrics['val_rmse'] < best_val_rmse:

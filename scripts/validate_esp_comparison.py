@@ -551,7 +551,8 @@ def validate_molecule_esp(molecule: Molecule, mpfit_charges: np.ndarray,
         # Compute QM ESP
         t_qm_start = time.time()
         qm_esp = compute_qm_esp_psi4(molecule, grid_points, qm_method, qm_basis, conformer_idx)
-        print(f"[DEBUG]   - QM ESP computation: {time.time() - t_qm_start:.2f}s")
+        qm_esp_time = time.time() - t_qm_start
+        print(f"[DEBUG]   - QM ESP computation: {qm_esp_time:.2f}s")
 
         # Get coordinates
         conformer = molecule.conformers[conformer_idx]
@@ -583,9 +584,11 @@ def validate_molecule_esp(molecule: Molecule, mpfit_charges: np.ndarray,
                 print(f"[DEBUG]   - Computing AM1-BCC charges...")
                 t_am1bcc_start = time.time()
                 am1bcc_charges = compute_am1bcc_charges(molecule)
+                am1bcc_charge_time = time.time() - t_am1bcc_start  # Only charge generation
+
                 am1bcc_esp = calculate_esp_from_charges(coords, am1bcc_charges, grid_points)
                 am1bcc_metrics = compare_grid_esp(qm_esp, am1bcc_esp, verbose=False)
-                am1bcc_metrics['time'] = time.time() - t_am1bcc_start
+                am1bcc_metrics['time'] = am1bcc_charge_time  # Store only charge generation time
                 result['am1bcc'] = am1bcc_metrics
                 print(f"[DEBUG]   - AM1-BCC completed: {am1bcc_metrics['time']:.2f}s")
             except Exception as e:
@@ -599,11 +602,14 @@ def validate_molecule_esp(molecule: Molecule, mpfit_charges: np.ndarray,
                 t_resp_start = time.time()
                 # Use existing ESP data instead of recalculating - saves ~220 seconds!
                 resp_charges = fit_resp_from_esp(molecule, grid_points, qm_esp, coords, qm_method, qm_basis)
+                resp_fitting_time = time.time() - t_resp_start  # Fitting time only
+
                 resp_esp = calculate_esp_from_charges(coords, resp_charges, grid_points)
                 resp_metrics = compare_grid_esp(qm_esp, resp_esp, verbose=False)
-                resp_metrics['time'] = time.time() - t_resp_start
+                # RESP requires QM ESP calculation + fitting
+                resp_metrics['time'] = qm_esp_time + resp_fitting_time
                 result['resp'] = resp_metrics
-                print(f"[DEBUG]   - RESP completed: {resp_metrics['time']:.2f}s")
+                print(f"[DEBUG]   - RESP completed: {resp_metrics['time']:.2f}s (QM ESP: {qm_esp_time:.2f}s + fitting: {resp_fitting_time:.2f}s)")
             except Exception as e:
                 logger.warning(f"RESP failed: {e}")
                 result['resp'] = None
@@ -747,7 +753,7 @@ def main():
 
         results['gnn']['mae'].append(validation['gnn']['mae'])
         results['gnn']['rmse'].append(validation['gnn']['rmse'])
-        results['gnn']['time'].append(gnn_inference_time + validation['gnn']['time'])
+        results['gnn']['time'].append(gnn_inference_time)  # Only inference time, not ESP validation
 
         # Collect carbon charges
         mpfit_charges = result['mpfit_charges']

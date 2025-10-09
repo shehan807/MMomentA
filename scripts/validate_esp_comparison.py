@@ -53,54 +53,157 @@ logger = logging.getLogger(__name__)
 BOHR_TO_ANGSTROM = 0.529177249
 
 
-def generate_esp_grid(molecule: Molecule, conformer_idx: int = 0,
-                      vdw_scale_factors: List[float] = [1.4, 1.6, 1.8, 2.0],
-                      density: float = 0.15) -> np.ndarray:
-    """Generate RESP-style ESP grid points around molecule.
+def surface(n):
+    """Computes approximately n points on unit sphere. Code adapted from GAMESS.
 
-    Args:
-        density: Grid point density (points per Å²). Default 0.15 gives ~2000 points
-                 for typical molecules. Original 1.0 gives ~16000 points (too many).
+    This is the RESP standard grid generation algorithm.
+
+    Parameters
+    ----------
+    n : int
+        approximate number of requested surface points
+
+    Returns
+    -------
+    ndarray
+        numpy array of xyz coordinates of surface points
     """
+    u = []
+    eps = 1e-10
+    nequat = int(np.sqrt(np.pi * n))
+    nvert = int(nequat / 2)
+    nu = 0
+    for i in range(nvert + 1):
+        fi = np.pi * i / nvert
+        z = np.cos(fi)
+        xy = np.sin(fi)
+        nhor = int(nequat * xy + eps)
+        if nhor < 1:
+            nhor = 1
+        for j in range(nhor):
+            fj = 2 * np.pi * j / nhor
+            x = np.cos(fj) * xy
+            y = np.sin(fj) * xy
+            if nu >= n:
+                return np.array(u)
+            nu += 1
+            u.append([x, y, z])
+    return np.array(u)
 
-    # VDW radii in Angstroms
-    vdw_radii = {
-        'H': 1.20, 'C': 1.70, 'N': 1.55, 'O': 1.52, 'F': 1.47,
-        'P': 1.80, 'S': 1.80, 'Cl': 1.75, 'Br': 1.85
+
+def vdw_surface(coordinates, symbols, scale_factor, density, input_radii=None):
+    """Computes points outside the van der Waals surface of molecules.
+
+    This is the RESP standard algorithm with point exclusion.
+
+    Parameters
+    ----------
+    coordinates : ndarray
+        cartesian coordinates of the nuclei, in units of angstrom
+    symbols : list
+        The symbols (e.g. C, H) for the atoms
+    scale_factor : float
+        The points on the molecular surface are set at a distance of
+        scale_factor * vdw_radius away from each of the atoms.
+    density : float
+        The (approximate) number of points to generate per square angstrom
+        of surface area. 1.0 is the default recommended by Kollman & Singh.
+    input_radii : dict, optional
+        dictionary of user's defined VDW radii
+
+    Returns
+    -------
+    surface_points : ndarray
+        array of the coordinates of the points on the surface
+    radii : dict
+        A dictionary of scaled VDW radii
+    """
+    # Van der Waals radii (in angstrom) taken from GAMESS - RESP standard
+    vdw_r = {
+        'H': 1.20, 'HE': 1.20,
+        'LI': 1.37, 'BE': 1.45, 'B': 1.45, 'C': 1.50,
+        'N': 1.50, 'O': 1.40, 'F': 1.35, 'NE': 1.30,
+        'NA': 1.57, 'MG': 1.36, 'AL': 1.24, 'SI': 1.17,
+        'P': 1.80, 'S': 1.75, 'CL': 1.70, 'BR': 1.85
     }
 
+    if input_radii is None:
+        input_radii = {}
+
+    radii = {}
+    surface_points = []
+
+    # Scale radii
+    for symbol in symbols:
+        if symbol in radii:
+            continue
+        if symbol in input_radii:
+            radii[symbol] = input_radii[symbol] * scale_factor
+        elif symbol in vdw_r:
+            radii[symbol] = vdw_r[symbol] * scale_factor
+        else:
+            raise KeyError(f'{symbol} is not a supported element; '
+                         + 'add its van der Waals radius.')
+
+    # Loop over atomic coordinates
+    for i in range(len(coordinates)):
+        # Calculate approximate number of ESP grid points
+        n_points = int(density * 4.0 * np.pi * np.power(radii[symbols[i]], 2))
+        # Generate an array of n_points in a unit sphere around the atom
+        dots = surface(n_points)
+        # Scale the unit sphere by the VDW radius and translate
+        dots = coordinates[i] + radii[symbols[i]] * dots
+
+        for j in range(len(dots)):
+            save = True
+            for k in range(len(coordinates)):
+                if i == k:
+                    continue
+                # Exclude points within the scaled VDW radius of other atoms
+                d = np.linalg.norm(dots[j] - coordinates[k])
+                if d < radii[symbols[k]]:
+                    save = False
+                    break
+            if save:
+                surface_points.append(dots[j])
+
+    return np.array(surface_points), radii
+
+
+def generate_esp_grid(molecule: Molecule, conformer_idx: int = 0,
+                      vdw_scale_factors: List[float] = [1.4, 1.6, 1.8, 2.0],
+                      density: float = 1.0) -> np.ndarray:
+    """Generate RESP-style ESP grid points around molecule.
+
+    Uses the RESP standard algorithm with GAMESS VDW radii and point exclusion.
+
+    Args:
+        vdw_scale_factors: VDW scale factors (RESP default: [1.4, 1.6, 1.8, 2.0])
+        density: Grid point density (points per Å²). RESP default: 1.0
+    """
     conformer = molecule.conformers[conformer_idx]
     coordinates = conformer.m_as('angstrom')
+    symbols = [atom.symbol for atom in molecule.atoms]
 
     grid_points = []
 
-    for atom, coord in zip(molecule.atoms, coordinates):
-        base_radius = vdw_radii.get(atom.symbol, 2.0)
+    for scale_factor in vdw_scale_factors:
+        shell, radii = vdw_surface(coordinates, symbols, scale_factor, density)
+        grid_points.append(shell)
 
-        for scale in vdw_scale_factors:
-            radius = base_radius * scale
-            n_points = max(int(4 * np.pi * radius**2 * density), 20)
+    grid_points = np.concatenate(grid_points)
 
-            # Fibonacci sphere
-            phi = np.pi * (3.0 - np.sqrt(5.0))
-            for i in range(n_points):
-                y = 1 - (i / float(n_points - 1)) * 2
-                r = np.sqrt(1 - y * y)
-                theta = phi * i
-                x = np.cos(theta) * r
-                z = np.sin(theta) * r
-
-                point = coord + np.array([x * radius, y * radius, z * radius])
-                grid_points.append(point)
-
-    return np.array(grid_points)
+    return grid_points
 
 
 def compute_qm_esp_psi4(molecule: Molecule, grid_points: np.ndarray,
                         qm_method: str = 'hf', qm_basis: str = '6-31G*',
                         conformer_idx: int = 0) -> np.ndarray:
-    """Compute QM ESP at grid points using Psi4's built-in ESP calculator."""
+    """Compute QM ESP at grid points using Psi4's property calculator.
 
+    This uses the RESP standard approach: write grid to file, use psi4.prop(),
+    and read ESP from file. This matches the RESP reference implementation.
+    """
     conformer = molecule.conformers[conformer_idx]
     coords = conformer.m_as('angstrom')
 
@@ -122,41 +225,29 @@ def compute_qm_esp_psi4(molecule: Molecule, grid_points: np.ndarray,
         'e_convergence': 1e-8,
         'd_convergence': 1e-8
     })
-
-    # Force Psi4 to use only 1 thread (critical for parallel workers)
-    psi4.set_num_threads(1)
     print(f"[DEBUG]     * Psi4 setup: {time.time() - t_setup_start:.2f}s")
 
-    # Compute wavefunction
-    t_scf_start = time.time()
-    psi4.core.set_output_file('psi4_output.dat', False)
-    energy, wfn = psi4.energy(qm_method, return_wfn=True, molecule=psi4_mol)
-    print(f"[DEBUG]     * SCF calculation: {time.time() - t_scf_start:.2f}s")
-
-    # Use Psi4's built-in ESP calculator at our grid points
-    # This computes full QM ESP (nuclear + electronic contributions)
-    t_esp_calc_start = time.time()
-
-    # Convert grid points to Psi4 Matrix (in Bohr)
+    # Write grid points to file (RESP standard approach)
+    # Psi4 expects grid in Bohr for internal use
+    t_grid_write = time.time()
     grid_bohr = grid_points / BOHR_TO_ANGSTROM
+    np.savetxt('grid.dat', grid_bohr, fmt='%15.10f')
+    print(f"[DEBUG]     * Grid file written: {time.time() - t_grid_write:.2f}s")
 
-    # Get ESP calculator
-    Vpot = psi4.core.VBase.build(wfn.basisset(), "RV")
-    Vpot.initialize()
+    # Compute ESP using Psi4's property calculator (RESP standard method)
+    # This reads grid.dat and writes grid_esp.dat
+    t_esp_start = time.time()
+    psi4.core.set_output_file('psi4_output.dat', False)
+    psi4.set_active_molecule(psi4_mol)
+    psi4.prop(qm_method, properties=['GRID_ESP'])
+    print(f"[DEBUG]     * SCF + ESP calculation: {time.time() - t_esp_start:.2f}s")
 
-    # Convert all grid points to Psi4 Vector3 list for batch processing
-    print(f"[DEBUG]     * Converting {len(grid_points)} points to Psi4 format...")
-    t_convert_start = time.time()
-    psi4_points = [psi4.core.Vector3(pt[0], pt[1], pt[2]) for pt in grid_bohr]
-    print(f"[DEBUG]     * Conversion took: {time.time() - t_convert_start:.2f}s")
+    # Read ESP values from file (RESP standard approach)
+    t_read_start = time.time()
+    esp_values = np.loadtxt('grid_esp.dat')
+    print(f"[DEBUG]     * ESP file read: {time.time() - t_read_start:.2f}s")
 
-    # Compute ESP at all grid points in one call (batch processing)
-    print(f"[DEBUG]     * Computing ESP at {len(grid_points)} points in batch...")
-    t_batch_start = time.time()
-    esp_values = np.array(Vpot.compute_esp(wfn.Da(), psi4_points))
-    print(f"[DEBUG]     * Batch ESP computation: {time.time() - t_batch_start:.2f}s")
-
-    print(f"[DEBUG]     * Total ESP evaluation: {time.time() - t_esp_calc_start:.2f}s")
+    psi4.core.clean()
 
     return esp_values
 
@@ -249,13 +340,6 @@ def validate_single_molecule(idx: int, mol_data: MoleculeData, model_dir: Path,
     # [DEBUG] Track timing for this molecule
     t_molecule_start = time.time()
     print(f"[DEBUG] Molecule {idx}: Starting validation")
-
-    # Force single-threaded execution to avoid thread oversubscription
-    # when running many workers in parallel
-    os.environ['OMP_NUM_THREADS'] = '1'
-    os.environ['MKL_NUM_THREADS'] = '1'
-    os.environ['OPENBLAS_NUM_THREADS'] = '1'
-    os.environ['NUMEXPR_NUM_THREADS'] = '1'
 
     # Load model (each worker loads its own copy)
     t_load_start = time.time()
@@ -454,8 +538,8 @@ def main():
                        help="Basis set for ESP calculation")
     parser.add_argument("--device", type=str, default="cpu",
                        help="Device for model inference")
-    parser.add_argument("--n-jobs", type=int, default=8,
-                       help="Number of parallel jobs for ESP validation (default: 8, too many causes Psi4 deadlock)")
+    parser.add_argument("--n-jobs", type=int, default=1,
+                       help="Number of parallel jobs for ESP validation (default: 1 for sequential, use -1 for all cores)")
 
     args = parser.parse_args()
 

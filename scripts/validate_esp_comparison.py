@@ -236,6 +236,13 @@ def validate_single_molecule(idx: int, mol_data: MoleculeData, model_dir: Path,
     from openff.toolkit import Molecule
     from openff.units import unit
 
+    # Force single-threaded execution to avoid thread oversubscription
+    # when running many workers in parallel
+    os.environ['OMP_NUM_THREADS'] = '1'
+    os.environ['MKL_NUM_THREADS'] = '1'
+    os.environ['OPENBLAS_NUM_THREADS'] = '1'
+    os.environ['NUMEXPR_NUM_THREADS'] = '1'
+
     # Load model (each worker loads its own copy)
     model = load_model(model_dir, device=device)
 
@@ -410,8 +417,8 @@ def main():
                        help="Basis set for ESP calculation")
     parser.add_argument("--device", type=str, default="cpu",
                        help="Device for model inference")
-    parser.add_argument("--n-jobs", type=int, default=-1,
-                       help="Number of parallel jobs for ESP validation (-1 for all CPUs)")
+    parser.add_argument("--n-jobs", type=int, default=32,
+                       help="Number of parallel jobs for ESP validation (default: 32, -1 for all CPUs)")
 
     args = parser.parse_args()
 

@@ -136,7 +136,7 @@ python scripts/validate_esp_comparison.py \
     --qm-method hf \
     --qm-basis "6-31G*" \
     --device cpu \
-    --n-jobs 16
+    --n-jobs 32
 
 echo ""
 echo "================================================"

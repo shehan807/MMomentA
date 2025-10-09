@@ -1,6 +1,6 @@
 #!/bin/bash
 # ZINC Dataset Pipeline for Perlmutter
-# Same workflow as MVP, but with 1000 ZINC molecules
+# Same workflow as MVP, but with 2000 ZINC molecules
 
 # Set working directory to MMomentA root
 MMOMENTA_DIR="${MMOMENTA_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"

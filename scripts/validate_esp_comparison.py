@@ -229,6 +229,9 @@ def compute_qm_esp_psi4(molecule: Molecule, grid_points: np.ndarray,
     psi4.core.clean()
     psi4_mol = psi4.geometry(mol_str)
 
+    # Force single-threaded execution to prevent contention in parallel workers
+    psi4.set_num_threads(1)
+
     # Set options - match RESP standard (only set basis, use Psi4 defaults for convergence)
     psi4.set_options({
         'basis': qm_basis
@@ -696,7 +699,8 @@ def main():
     else:
         logger.info(f"Starting parallel ESP validation with {args.n_jobs} workers...")
         # Parallel: use worker wrapper with thread isolation
-        validation_results = Parallel(n_jobs=args.n_jobs, backend='multiprocessing', verbose=10)(
+        # Use 'loky' backend - more robust for scientific computing with C extensions
+        validation_results = Parallel(n_jobs=args.n_jobs, backend='loky', verbose=10)(
             delayed(validate_single_molecule_worker)(
                 idx, molecule_data_list[idx], model_dir,
                 args.qm_method, args.qm_basis, args.device

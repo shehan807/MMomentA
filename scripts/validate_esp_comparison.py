@@ -322,7 +322,7 @@ def fit_resp_from_esp(molecule: Molecule, grid_points: np.ndarray, esp_values: n
     esp_record = MoleculeESPRecord.from_molecule(
         molecule=molecule,
         conformer=conformer_with_units,
-        grid=grid_points * openff_unit.angstrom,  # Convert to Quantity
+        grid_coordinates=grid_points * openff_unit.angstrom,  # Convert to Quantity
         esp=esp_values * openff_unit.hartree / openff_unit.elementary_charge,  # Convert to Quantity
         electric_field=None,
         esp_settings=esp_settings

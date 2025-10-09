@@ -375,8 +375,9 @@ def predict_charges(model: ChargeModel, mol_data: MoleculeData,
     """Predict charges for a molecule using trained model."""
 
     # Convert MoleculeData to DGL graph
-    # Check if model uses multipoles by checking config
-    include_multipoles = getattr(model.config, 'include_multipoles', True)
+    # Infer multipoles from feature_units: 117 = no multipoles, 198 = with multipoles
+    feature_units = model.config.feature_units
+    include_multipoles = (feature_units > 150)  # 198 vs 117
     graph = molecule_data_to_dgl_graph(mol_data, include_multipoles=include_multipoles)
     graph = graph.to(device)
 
@@ -882,10 +883,11 @@ def main():
     sys.path.insert(0, str(Path(__file__).parent.parent / 'figures'))
     from plot_comparison import create_esp_violin_plot, create_carbon_charge_hexbin
 
-    # ESP violin plot
-    plot_file = create_esp_violin_plot(results, output_dir=output_dir,
-                                       qm_method=args.qm_method, qm_basis=args.qm_basis)
-    logger.info(f"✓ ESP violin plot saved to {plot_file}")
+    # ESP violin plots (separate MAE and RMSE)
+    mae_file, rmse_file = create_esp_violin_plot(results, output_dir=output_dir,
+                                                  qm_method=args.qm_method, qm_basis=args.qm_basis)
+    logger.info(f"✓ ESP MAE plot saved to {mae_file}")
+    logger.info(f"✓ ESP RMSE plot saved to {rmse_file}")
 
     # Carbon charge hexbin plot
     if len(carbon_charges_ref) > 0:

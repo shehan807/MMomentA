@@ -679,7 +679,8 @@ def main():
     from joblib import Parallel, delayed
 
     # Pass model directory (not checkpoint path) - load_model() will append the checkpoint path
-    model_dir = Path(args.model_dir)
+    # IMPORTANT: Convert to absolute path for multiprocessing (workers change directories)
+    model_dir = Path(args.model_dir).resolve()
 
     # Choose worker function based on parallelism
     if args.n_jobs == 1:

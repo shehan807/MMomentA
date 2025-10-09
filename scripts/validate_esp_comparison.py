@@ -330,8 +330,8 @@ def main():
                        help="Directory containing trained model")
     parser.add_argument("--output-dir", type=str, default="figures",
                        help="Output directory for results")
-    parser.add_argument("--n-molecules", type=int, default=20,
-                       help="Number of test molecules to validate")
+    parser.add_argument("--n-molecules", type=int, default=None,
+                       help="Number of test molecules to validate (default: all test molecules)")
     parser.add_argument("--qm-method", type=str, default="hf",
                        help="QM method for ESP calculation")
     parser.add_argument("--qm-basis", type=str, default="6-31G*",
@@ -358,8 +358,11 @@ def main():
 
     # Get test molecules
     split_indices = metadata.get('split_indices', {}) if metadata else {}
-    test_indices = split_indices.get('test', list(range(min(args.n_molecules, len(molecule_data_list)))))
-    test_indices = test_indices[:args.n_molecules]
+    test_indices = split_indices.get('test', list(range(len(molecule_data_list))))
+
+    # Optionally limit number of molecules
+    if args.n_molecules is not None:
+        test_indices = test_indices[:args.n_molecules]
 
     logger.info(f"Validating {len(test_indices)} test molecules")
     logger.info(f"QM method: {args.qm_method}/{args.qm_basis}")
@@ -442,8 +445,8 @@ def main():
             results['gnn']['time'].append(gnn_inference_time + validation['gnn']['time'])
 
             # Collect carbon atom charges for hexbin plot
-            # Extract atomic numbers from mol_data
-            atomic_numbers = mol_data.atomic_features[:, 0]  # First column is atomic number
+            # Extract atomic numbers from mol_data (it's a dict)
+            atomic_numbers = mol_data.atomic_features['atomic_numbers']
             carbon_mask = (atomic_numbers == 6)  # Carbon = atomic number 6
 
             carbon_charges_ref.extend(mpfit_charges[carbon_mask])

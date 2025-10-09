@@ -122,7 +122,6 @@ python scripts/validate_esp_comparison.py \
     --dataset data/zinc_mpfit.h5 \
     --model-dir runs/zinc_multipoles \
     --output-dir figures/zinc_esp_validation \
-    --n-molecules 20 \
     --qm-method hf \
     --qm-basis "6-31G*" \
     --device cpu

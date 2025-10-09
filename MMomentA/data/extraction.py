@@ -64,12 +64,12 @@ def extract_atomic_features(molecule: Molecule) -> Dict[str, np.ndarray]:
     formal_charges = np.array([atom.formal_charge.m for atom in molecule.atoms])
     is_aromatic = np.array([atom.is_aromatic for atom in molecule.atoms], dtype=float)
 
-    import warnings
+    from rdkit import RDLogger
     degree = np.array([atom.GetTotalDegree() for atom in rdkit_mol.GetAtoms()])
     # Suppress RDKit deprecation warning for GetTotalValence()
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message=".*GetValence.*")
-        valence = np.array([atom.GetTotalValence() for atom in rdkit_mol.GetAtoms()])
+    RDLogger.DisableLog('rdApp.*')
+    valence = np.array([atom.GetTotalValence() for atom in rdkit_mol.GetAtoms()])
+    RDLogger.EnableLog('rdApp.*')
     explicit_valence = np.array([atom.GetExplicitValence() for atom in rdkit_mol.GetAtoms()])
 
     hybridization = np.zeros((n_atoms, 5))

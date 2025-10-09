@@ -117,7 +117,6 @@ python scripts/validate_esp_comparison.py \
     --dataset data/qm9_mpfit.h5 \
     --model-dir runs/qm9_multipoles \
     --output-dir figures/qm9_esp_validation \
-    --n-molecules 20 \
     --qm-method hf \
     --qm-basis "6-31G*" \
     --device cpu

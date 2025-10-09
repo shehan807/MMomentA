@@ -46,6 +46,15 @@ from MMomentA.qm.am1bcc import AM1BCCCalculator
 from MMomentA.qm.resp import RESPCalculator
 from esp_utils import compare_grid_esp
 
+# RESP fitting imports for reusing ESP data
+from openff.recharge.charges.resp import generate_resp_charge_parameter
+from openff.recharge.charges.resp.solvers import IterativeSolver
+from openff.recharge.esp import ESPSettings
+from openff.recharge.esp.storage import MoleculeESPRecord
+from openff.recharge.grids import MSKGridSettings
+from openff.recharge.charges.library import LibraryChargeCollection, LibraryChargeGenerator
+from openff.units import unit as openff_unit
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -276,6 +285,58 @@ def calculate_esp_from_charges(coordinates: np.ndarray, charges: np.ndarray,
     return esp_values
 
 
+def fit_resp_from_esp(molecule: Molecule, grid_points: np.ndarray, esp_values: np.ndarray,
+                      conformer_coords: np.ndarray, qm_method: str = 'hf',
+                      qm_basis: str = '6-31G*') -> np.ndarray:
+    """Fit RESP charges from existing ESP data (no QM recalculation).
+
+    This bypasses the expensive Psi4ESPGenerator.generate() step by using
+    already-computed ESP grid and values.
+
+    Args:
+        molecule: OpenFF Molecule object
+        grid_points: ESP grid points in Angstroms (N, 3)
+        esp_values: ESP values at grid points in atomic units (N,)
+        conformer_coords: Molecular conformer coordinates in Angstroms (M, 3)
+        qm_method: QM method used (for metadata)
+        qm_basis: Basis set used (for metadata)
+
+    Returns:
+        RESP fitted charges as numpy array
+    """
+    # Create ESP settings for metadata
+    esp_settings = ESPSettings(
+        method=qm_method,
+        basis=qm_basis,
+        grid_settings=MSKGridSettings()
+    )
+
+    # Convert coordinates to openff Quantity with units
+    conformer_with_units = conformer_coords * openff_unit.angstrom
+
+    # Create MoleculeESPRecord from existing data
+    # Note: electric_field is not needed for RESP fitting, pass None
+    esp_record = MoleculeESPRecord.from_molecule(
+        molecule=molecule,
+        conformer=conformer_with_units,
+        grid=grid_points * openff_unit.angstrom,  # Convert to Quantity
+        esp=esp_values * openff_unit.hartree / openff_unit.elementary_charge,  # Convert to Quantity
+        electric_field=None,
+        esp_settings=esp_settings
+    )
+
+    # Fit RESP charges using iterative solver
+    solver = IterativeSolver()
+    charge_parameter = generate_resp_charge_parameter([esp_record], solver)
+
+    # Generate final charges
+    charges = LibraryChargeGenerator.generate(
+        molecule, LibraryChargeCollection(parameters=[charge_parameter])
+    )
+
+    return charges.flatten()
+
+
 def load_model(model_dir: Path, device: str = 'cpu') -> ChargeModel:
     """Load trained MMomentA model from checkpoint."""
 
@@ -324,15 +385,52 @@ def predict_charges(model: ChargeModel, mol_data: MoleculeData,
     return predicted_charges
 
 
-def validate_single_molecule(idx: int, mol_data: MoleculeData, model_dir: Path,
-                             qm_method: str, qm_basis: str, device: str) -> dict:
-    """Validate a single molecule (for parallel processing).
+def validate_single_molecule_worker(idx: int, mol_data: MoleculeData, model_dir: Path,
+                                    qm_method: str, qm_basis: str, device: str) -> dict:
+    """Worker function for parallel validation with proper thread isolation.
 
-    This function is designed to be called in parallel - it loads its own model
-    and performs all validations independently.
+    Sets up isolated environment for each worker to avoid Psi4 thread contention.
     """
     import os
     import tempfile
+
+    pid = os.getpid()
+    original_cwd = os.getcwd()
+
+    try:
+        # Create isolated temporary directory for this worker
+        with tempfile.TemporaryDirectory(prefix=f'esp_val_{idx}_pid_{pid}_') as temp_dir:
+            # Set environment for single-threaded execution and isolated scratch
+            os.environ['PSI_SCRATCH'] = temp_dir
+            os.environ['OMP_NUM_THREADS'] = '1'
+            os.environ['MKL_NUM_THREADS'] = '1'
+            os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+            os.chdir(temp_dir)
+
+            # Call the actual validation logic
+            result = validate_single_molecule(idx, mol_data, model_dir, qm_method, qm_basis, device)
+
+            os.chdir(original_cwd)
+            return result
+
+    except Exception as e:
+        os.chdir(original_cwd)
+        logger.error(f"Worker {pid} failed on molecule {idx}: {e}")
+        return {
+            'idx': idx,
+            'success': False,
+            'error': f"Worker error: {type(e).__name__}: {str(e)}"
+        }
+
+
+def validate_single_molecule(idx: int, mol_data: MoleculeData, model_dir: Path,
+                             qm_method: str, qm_basis: str, device: str) -> dict:
+    """Validate a single molecule (core validation logic).
+
+    This function contains the actual validation logic and can be called
+    either directly (sequential) or via validate_single_molecule_worker (parallel).
+    """
     from openff.toolkit import Molecule
     from openff.units import unit
 
@@ -368,20 +466,16 @@ def validate_single_molecule(idx: int, mol_data: MoleculeData, model_dir: Path,
         elif mol_data.conformer is not None:
             molecule.conformers[0] = mol_data.conformer * unit.angstrom
 
-        # Use temporary directory for Psi4 scratch files
+        # Validate ESP (temp directory and environment are handled by worker wrapper)
         print(f"[DEBUG] Molecule {idx}: Starting ESP validation")
         t_esp_start = time.time()
-        with tempfile.TemporaryDirectory(prefix=f'esp_val_{idx}_') as temp_dir:
-            os.environ['PSI_SCRATCH'] = temp_dir
-
-            # Validate ESP
-            validation = validate_molecule_esp(
-                molecule, mpfit_charges, gnn_charges,
-                qm_method=qm_method,
-                qm_basis=qm_basis,
-                include_am1bcc=True,
-                include_resp=True
-            )
+        validation = validate_molecule_esp(
+            molecule, mpfit_charges, gnn_charges,
+            qm_method=qm_method,
+            qm_basis=qm_basis,
+            include_am1bcc=True,
+            include_resp=True
+        )
         print(f"[DEBUG] Molecule {idx}: ESP validation completed in {time.time() - t_esp_start:.2f}s")
 
         # Extract atomic numbers for carbon filtering
@@ -500,7 +594,8 @@ def validate_molecule_esp(molecule: Molecule, mpfit_charges: np.ndarray,
             try:
                 print(f"[DEBUG]   - Computing RESP charges...")
                 t_resp_start = time.time()
-                resp_charges = compute_resp_charges(molecule, qm_method, qm_basis, conformer_idx)
+                # Use existing ESP data instead of recalculating - saves ~220 seconds!
+                resp_charges = fit_resp_from_esp(molecule, grid_points, qm_esp, coords, qm_method, qm_basis)
                 resp_esp = calculate_esp_from_charges(coords, resp_charges, grid_points)
                 resp_metrics = compare_grid_esp(qm_esp, resp_esp, verbose=False)
                 resp_metrics['time'] = time.time() - t_resp_start
@@ -537,8 +632,8 @@ def main():
                        help="Basis set for ESP calculation")
     parser.add_argument("--device", type=str, default="cpu",
                        help="Device for model inference")
-    parser.add_argument("--n-jobs", type=int, default=1,
-                       help="Number of parallel jobs for ESP validation (default: 1 for sequential, use -1 for all cores)")
+    parser.add_argument("--n-jobs", type=int, default=8,
+                       help="Number of parallel jobs for ESP validation (default: 8, use -1 for all cores, 1 for sequential)")
 
     args = parser.parse_args()
 
@@ -586,14 +681,27 @@ def main():
     # Pass model directory (not checkpoint path) - load_model() will append the checkpoint path
     model_dir = Path(args.model_dir)
 
-    logger.info("Starting parallel ESP validation...")
-    validation_results = Parallel(n_jobs=args.n_jobs, backend='multiprocessing', verbose=10)(
-        delayed(validate_single_molecule)(
-            idx, molecule_data_list[idx], model_dir,
-            args.qm_method, args.qm_basis, args.device
+    # Choose worker function based on parallelism
+    if args.n_jobs == 1:
+        logger.info("Starting sequential ESP validation...")
+        # Sequential: use direct function (no worker wrapper needed)
+        validation_results = [
+            validate_single_molecule(
+                idx, molecule_data_list[idx], model_dir,
+                args.qm_method, args.qm_basis, args.device
+            )
+            for idx in test_indices
+        ]
+    else:
+        logger.info(f"Starting parallel ESP validation with {args.n_jobs} workers...")
+        # Parallel: use worker wrapper with thread isolation
+        validation_results = Parallel(n_jobs=args.n_jobs, backend='multiprocessing', verbose=10)(
+            delayed(validate_single_molecule_worker)(
+                idx, molecule_data_list[idx], model_dir,
+                args.qm_method, args.qm_basis, args.device
+            )
+            for idx in test_indices
         )
-        for idx in test_indices
-    )
 
     # Aggregate results
     results = {

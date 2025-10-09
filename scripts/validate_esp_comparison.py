@@ -220,12 +220,9 @@ def compute_qm_esp_psi4(molecule: Molecule, grid_points: np.ndarray,
     psi4.core.clean()
     psi4_mol = psi4.geometry(mol_str)
 
-    # Set options
+    # Set options - match RESP standard (only set basis, use Psi4 defaults for convergence)
     psi4.set_options({
-        'basis': qm_basis,
-        'scf_type': 'df',
-        'e_convergence': 1e-8,
-        'd_convergence': 1e-8
+        'basis': qm_basis
     })
     print(f"[DEBUG]     * Psi4 setup: {time.time() - t_setup_start:.2f}s")
 

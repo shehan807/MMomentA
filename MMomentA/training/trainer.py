@@ -42,7 +42,7 @@ class TrainingConfig:
     learning_rate: float = 1e-3
     weight_decay: float = 1e-5
     batch_size: int = 128
-    eval_frequency: int = 10
+    eval_frequency: int = 100
     checkpoint_dir: str = "checkpoints"
     save_frequency: int = 50
     early_stopping_patience: int = 0
@@ -97,6 +97,17 @@ class Trainer:
             model.parameters(),
             lr=config.learning_rate,
             weight_decay=config.weight_decay
+        )
+
+        # Learning rate scheduler (reduce on plateau)
+        # With eval_frequency=100, patience=10 means 1000 epochs without improvement
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer,
+            mode='min',
+            factor=0.5,
+            patience=10,
+            verbose=True,
+            min_lr=1e-6
         )
 
         self.criterion = nn.MSELoss()
@@ -227,10 +238,14 @@ class Trainer:
                 epoch_metrics = {**train_metrics, **val_metrics}
                 self.metrics_tracker.update(epoch_metrics)
 
+                # Step learning rate scheduler
+                self.scheduler.step(val_metrics['val_rmse'])
+
                 logger.info(
                     f"Epoch {epoch}/{self.config.n_epochs} - "
                     f"Train RMSE: {train_metrics['train_rmse']:.5f}, "
-                    f"Val RMSE: {val_metrics['val_rmse']:.5f}"
+                    f"Val RMSE: {val_metrics['val_rmse']:.5f}, "
+                    f"LR: {self.optimizer.param_groups[0]['lr']:.2e}"
                 )
 
                 if val_metrics['val_rmse'] < best_val_rmse:

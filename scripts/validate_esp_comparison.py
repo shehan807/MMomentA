@@ -44,7 +44,17 @@ from MMomentA.data.schema import MoleculeData
 from MMomentA.models import ChargeModel, ModelConfig
 from MMomentA.qm.am1bcc import AM1BCCCalculator
 from MMomentA.qm.resp import RESPCalculator
+from MMomentA.qm.mpfit import MPFITCalculator
 from esp_utils import compare_grid_esp
+
+# RESP fitting imports for reusing ESP data
+from openff.recharge.charges.resp import generate_resp_charge_parameter
+from openff.recharge.charges.resp.solvers import IterativeSolver
+from openff.recharge.esp import ESPSettings
+from openff.recharge.esp.storage import MoleculeESPRecord
+from openff.recharge.grids import MSKGridSettings
+from openff.recharge.charges.library import LibraryChargeCollection, LibraryChargeGenerator
+from openff.units import unit as openff_unit
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -53,53 +63,164 @@ logger = logging.getLogger(__name__)
 BOHR_TO_ANGSTROM = 0.529177249
 
 
+def surface(n):
+    """Computes approximately n points on unit sphere. Code adapted from GAMESS.
+
+    This is the RESP standard grid generation algorithm.
+
+    Parameters
+    ----------
+    n : int
+        approximate number of requested surface points
+
+    Returns
+    -------
+    ndarray
+        numpy array of xyz coordinates of surface points
+    """
+    u = []
+    eps = 1e-10
+    nequat = int(np.sqrt(np.pi * n))
+    nvert = int(nequat / 2)
+    nu = 0
+    for i in range(nvert + 1):
+        fi = np.pi * i / nvert
+        z = np.cos(fi)
+        xy = np.sin(fi)
+        nhor = int(nequat * xy + eps)
+        if nhor < 1:
+            nhor = 1
+        for j in range(nhor):
+            fj = 2 * np.pi * j / nhor
+            x = np.cos(fj) * xy
+            y = np.sin(fj) * xy
+            if nu >= n:
+                return np.array(u)
+            nu += 1
+            u.append([x, y, z])
+    return np.array(u)
+
+
+def vdw_surface(coordinates, symbols, scale_factor, density, input_radii=None):
+    """Computes points outside the van der Waals surface of molecules.
+
+    This is the RESP standard algorithm with point exclusion.
+
+    Parameters
+    ----------
+    coordinates : ndarray
+        cartesian coordinates of the nuclei, in units of angstrom
+    symbols : list
+        The symbols (e.g. C, H) for the atoms
+    scale_factor : float
+        The points on the molecular surface are set at a distance of
+        scale_factor * vdw_radius away from each of the atoms.
+    density : float
+        The (approximate) number of points to generate per square angstrom
+        of surface area. 1.0 is the default recommended by Kollman & Singh.
+    input_radii : dict, optional
+        dictionary of user's defined VDW radii
+
+    Returns
+    -------
+    surface_points : ndarray
+        array of the coordinates of the points on the surface
+    radii : dict
+        A dictionary of scaled VDW radii
+    """
+    # Van der Waals radii (in angstrom) taken from GAMESS - RESP standard
+    vdw_r = {
+        'H': 1.20, 'HE': 1.20,
+        'LI': 1.37, 'BE': 1.45, 'B': 1.45, 'C': 1.50,
+        'N': 1.50, 'O': 1.40, 'F': 1.35, 'NE': 1.30,
+        'NA': 1.57, 'MG': 1.36, 'AL': 1.24, 'SI': 1.17,
+        'P': 1.80, 'S': 1.75, 'CL': 1.70, 'BR': 1.85
+    }
+
+    if input_radii is None:
+        input_radii = {}
+
+    radii = {}
+    surface_points = []
+
+    # Scale radii
+    for symbol in symbols:
+        if symbol in radii:
+            continue
+        # Convert to uppercase for lookup (VDW radii dict uses uppercase keys)
+        symbol_upper = symbol.upper()
+        if symbol in input_radii:
+            radii[symbol] = input_radii[symbol] * scale_factor
+        elif symbol_upper in vdw_r:
+            radii[symbol] = vdw_r[symbol_upper] * scale_factor
+        else:
+            raise KeyError(f'{symbol} is not a supported element; '
+                         + 'add its van der Waals radius.')
+
+    # Loop over atomic coordinates
+    for i in range(len(coordinates)):
+        # Calculate approximate number of ESP grid points
+        n_points = int(density * 4.0 * np.pi * np.power(radii[symbols[i]], 2))
+        # Generate an array of n_points in a unit sphere around the atom
+        dots = surface(n_points)
+        # Scale the unit sphere by the VDW radius and translate
+        dots = coordinates[i] + radii[symbols[i]] * dots
+
+        for j in range(len(dots)):
+            save = True
+            for k in range(len(coordinates)):
+                if i == k:
+                    continue
+                # Exclude points within the scaled VDW radius of other atoms
+                d = np.linalg.norm(dots[j] - coordinates[k])
+                if d < radii[symbols[k]]:
+                    save = False
+                    break
+            if save:
+                surface_points.append(dots[j])
+
+    return np.array(surface_points), radii
+
+
 def generate_esp_grid(molecule: Molecule, conformer_idx: int = 0,
                       vdw_scale_factors: List[float] = [1.4, 1.6, 1.8, 2.0],
                       density: float = 1.0) -> np.ndarray:
-    """Generate RESP-style ESP grid points around molecule."""
+    """Generate RESP-style ESP grid points around molecule.
 
-    # VDW radii in Angstroms
-    vdw_radii = {
-        'H': 1.20, 'C': 1.70, 'N': 1.55, 'O': 1.52, 'F': 1.47,
-        'P': 1.80, 'S': 1.80, 'Cl': 1.75, 'Br': 1.85
-    }
+    Uses the RESP standard algorithm with GAMESS VDW radii and point exclusion.
 
+    Args:
+        vdw_scale_factors: VDW scale factors (RESP default: [1.4, 1.6, 1.8, 2.0])
+        density: Grid point density (points per Å²). RESP default: 1.0
+    """
     conformer = molecule.conformers[conformer_idx]
     coordinates = conformer.m_as('angstrom')
+    symbols = [atom.symbol for atom in molecule.atoms]
 
     grid_points = []
 
-    for atom, coord in zip(molecule.atoms, coordinates):
-        base_radius = vdw_radii.get(atom.symbol, 2.0)
+    for scale_factor in vdw_scale_factors:
+        shell, radii = vdw_surface(coordinates, symbols, scale_factor, density)
+        grid_points.append(shell)
 
-        for scale in vdw_scale_factors:
-            radius = base_radius * scale
-            n_points = max(int(4 * np.pi * radius**2 * density), 20)
+    grid_points = np.concatenate(grid_points)
 
-            # Fibonacci sphere
-            phi = np.pi * (3.0 - np.sqrt(5.0))
-            for i in range(n_points):
-                y = 1 - (i / float(n_points - 1)) * 2
-                r = np.sqrt(1 - y * y)
-                theta = phi * i
-                x = np.cos(theta) * r
-                z = np.sin(theta) * r
-
-                point = coord + np.array([x * radius, y * radius, z * radius])
-                grid_points.append(point)
-
-    return np.array(grid_points)
+    return grid_points
 
 
 def compute_qm_esp_psi4(molecule: Molecule, grid_points: np.ndarray,
                         qm_method: str = 'hf', qm_basis: str = '6-31G*',
                         conformer_idx: int = 0) -> np.ndarray:
-    """Compute QM ESP at grid points using Psi4."""
+    """Compute QM ESP at grid points using Psi4's property calculator.
 
+    This uses the RESP standard approach: write grid to file, use psi4.prop(),
+    and read ESP from file. This matches the RESP reference implementation.
+    """
     conformer = molecule.conformers[conformer_idx]
     coords = conformer.m_as('angstrom')
 
     # Build Psi4 molecule string
+    t_setup_start = time.time()
     mol_str = f"{molecule.total_charge.m} 1\n"
     for atom, coord in zip(molecule.atoms, coords):
         mol_str += f"{atom.symbol} {coord[0]:.10f} {coord[1]:.10f} {coord[2]:.10f}\n"
@@ -109,44 +230,36 @@ def compute_qm_esp_psi4(molecule: Molecule, grid_points: np.ndarray,
     psi4.core.clean()
     psi4_mol = psi4.geometry(mol_str)
 
-    # Set options
+    # Force single-threaded execution to prevent contention in parallel workers
+    psi4.set_num_threads(1)
+
+    # Set options - match RESP standard (only set basis, use Psi4 defaults for convergence)
     psi4.set_options({
-        'basis': qm_basis,
-        'scf_type': 'df',
-        'e_convergence': 1e-8,
-        'd_convergence': 1e-8
+        'basis': qm_basis
     })
+    print(f"[DEBUG]     * Psi4 setup: {time.time() - t_setup_start:.2f}s")
 
-    # Compute wavefunction
-    # Use tempfile instead of /dev/null (permission issues on some systems)
+    # Write grid points to file (RESP standard approach)
+    # Psi4 expects grid in Bohr for internal use
+    t_grid_write = time.time()
+    grid_bohr = grid_points / BOHR_TO_ANGSTROM
+    np.savetxt('grid.dat', grid_bohr, fmt='%15.10f')
+    print(f"[DEBUG]     * Grid file written: {time.time() - t_grid_write:.2f}s")
+
+    # Compute ESP using Psi4's property calculator (RESP standard method)
+    # This reads grid.dat and writes grid_esp.dat
+    t_esp_start = time.time()
     psi4.core.set_output_file('psi4_output.dat', False)
-    energy, wfn = psi4.energy(qm_method, return_wfn=True, molecule=psi4_mol)
+    # Molecule from psi4.geometry() is already active - no need to set it
+    psi4.prop(qm_method, properties=['GRID_ESP'])
+    print(f"[DEBUG]     * SCF + ESP calculation: {time.time() - t_esp_start:.2f}s")
 
-    # Compute ESP at grid points
-    esp_values = np.zeros(len(grid_points))
+    # Read ESP values from file (RESP standard approach)
+    t_read_start = time.time()
+    esp_values = np.loadtxt('grid_esp.dat')
+    print(f"[DEBUG]     * ESP file read: {time.time() - t_read_start:.2f}s")
 
-    # Get density matrix and basis set
-    C = wfn.Ca()
-    eps = wfn.epsilon_a()
-    mints = psi4.core.MintsHelper(wfn.basisset())
-
-    # Use Psi4's ESP calculator (simplified version)
-    # For production, would use Psi4's full ESP property calculator
-    # Here we approximate with point nuclear charges
-    for i, grid_point in enumerate(grid_points):
-        esp_val = 0.0
-
-        # Nuclear contribution
-        for j, (atom, coord) in enumerate(zip(molecule.atoms, coords)):
-            distance_angstrom = np.linalg.norm(grid_point - coord)
-            if distance_angstrom > 1e-6:
-                # ESP in a.u. = charge / (distance_angstrom / bohr_to_angstrom)
-                esp_val += atom.atomic_number / (distance_angstrom / BOHR_TO_ANGSTROM)
-
-        # Electronic contribution would require full integration
-        # This is a simplified version - in production use Psi4's oeprop
-
-        esp_values[i] = esp_val
+    psi4.core.clean()
 
     return esp_values
 
@@ -174,6 +287,55 @@ def calculate_esp_from_charges(coordinates: np.ndarray, charges: np.ndarray,
                 esp_values[i] += charge / distance_bohr
 
     return esp_values
+
+
+def fit_resp_from_esp(molecule: Molecule, grid_points: np.ndarray, esp_values: np.ndarray,
+                      conformer_coords: np.ndarray, qm_method: str = 'hf',
+                      qm_basis: str = '6-31G*') -> np.ndarray:
+    """Fit RESP charges from existing ESP data (no QM recalculation).
+
+    This bypasses the expensive Psi4ESPGenerator.generate() step by using
+    already-computed ESP grid and values.
+
+    Args:
+        molecule: OpenFF Molecule object
+        grid_points: ESP grid points in Angstroms (N, 3)
+        esp_values: ESP values at grid points in atomic units (N,)
+        conformer_coords: Molecular conformer coordinates in Angstroms (M, 3)
+        qm_method: QM method used (for metadata)
+        qm_basis: Basis set used (for metadata)
+
+    Returns:
+        RESP fitted charges as numpy array
+    """
+    # Create ESP settings for metadata
+    esp_settings = ESPSettings(
+        method=qm_method,
+        basis=qm_basis,
+        grid_settings=MSKGridSettings()
+    )
+
+    # Pass numpy arrays directly - Pydantic validator handles unit conversion internally
+    # The validator expects numpy arrays in the correct units (angstrom, hartree/e)
+    esp_record = MoleculeESPRecord.from_molecule(
+        molecule=molecule,
+        conformer=conformer_coords,        # numpy array in angstrom
+        grid_coordinates=grid_points,      # numpy array in angstrom
+        esp=esp_values,                     # numpy array in hartree/e
+        electric_field=None,
+        esp_settings=esp_settings
+    )
+
+    # Fit RESP charges using iterative solver
+    solver = IterativeSolver()
+    charge_parameter = generate_resp_charge_parameter([esp_record], solver)
+
+    # Generate final charges
+    charges = LibraryChargeGenerator.generate(
+        molecule, LibraryChargeCollection(parameters=[charge_parameter])
+    )
+
+    return charges.flatten()
 
 
 def load_model(model_dir: Path, device: str = 'cpu') -> ChargeModel:
@@ -211,8 +373,9 @@ def predict_charges(model: ChargeModel, mol_data: MoleculeData,
     """Predict charges for a molecule using trained model."""
 
     # Convert MoleculeData to DGL graph
-    # Check if model uses multipoles by checking config
-    include_multipoles = getattr(model.config, 'include_multipoles', True)
+    # Infer multipoles from feature_units: 117 = no multipoles, 198 = with multipoles
+    feature_units = model.config.feature_units
+    include_multipoles = (feature_units > 150)  # 198 vs 117
     graph = molecule_data_to_dgl_graph(mol_data, include_multipoles=include_multipoles)
     graph = graph.to(device)
 
@@ -222,6 +385,147 @@ def predict_charges(model: ChargeModel, mol_data: MoleculeData,
         predicted_charges = graph.ndata["q"].cpu().numpy().flatten()
 
     return predicted_charges
+
+
+def validate_single_molecule_worker(idx: int, mol_data: MoleculeData, model_dir: Path,
+                                    qm_method: str, qm_basis: str, device: str) -> dict:
+    """Worker function for parallel validation with proper thread isolation.
+
+    Sets up isolated environment for each worker to avoid Psi4 thread contention.
+    """
+    import os
+    import tempfile
+
+    pid = os.getpid()
+    original_cwd = os.getcwd()
+
+    try:
+        # Create isolated temporary directory for this worker
+        with tempfile.TemporaryDirectory(prefix=f'esp_val_{idx}_pid_{pid}_') as temp_dir:
+            # Set environment for single-threaded execution and isolated scratch
+            os.environ['PSI_SCRATCH'] = temp_dir
+            os.environ['OMP_NUM_THREADS'] = '1'
+            os.environ['MKL_NUM_THREADS'] = '1'
+            os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+            os.chdir(temp_dir)
+
+            # Call the actual validation logic
+            result = validate_single_molecule(idx, mol_data, model_dir, qm_method, qm_basis, device)
+
+            os.chdir(original_cwd)
+            return result
+
+    except Exception as e:
+        os.chdir(original_cwd)
+        logger.error(f"Worker {pid} failed on molecule {idx}: {e}")
+        return {
+            'idx': idx,
+            'success': False,
+            'error': f"Worker error: {type(e).__name__}: {str(e)}"
+        }
+
+
+def validate_single_molecule(idx: int, mol_data: MoleculeData, model_dir: Path,
+                             qm_method: str, qm_basis: str, device: str) -> dict:
+    """Validate a single molecule (core validation logic).
+
+    This function contains the actual validation logic and can be called
+    either directly (sequential) or via validate_single_molecule_worker (parallel).
+    """
+    from openff.toolkit import Molecule
+    from openff.units import unit
+
+    # [DEBUG] Track timing for this molecule
+    t_molecule_start = time.time()
+    print(f"[DEBUG] Molecule {idx}: Starting validation")
+
+    # Load model (each worker loads its own copy)
+    t_load_start = time.time()
+    model = load_model(model_dir, device=device)
+    print(f"[DEBUG] Molecule {idx}: Model loaded in {time.time() - t_load_start:.2f}s")
+
+    try:
+        mpfit_charges_precomputed = mol_data.target_charges
+
+        # Predict charges with GNN
+        t_gnn_start = time.time()
+        gnn_charges = predict_charges(model, mol_data, device=device)
+        gnn_inference_time = time.time() - t_gnn_start
+        print(f"[DEBUG] Molecule {idx}: GNN prediction in {gnn_inference_time:.2f}s")
+
+        # Reconstruct molecule
+        t_mol_start = time.time()
+        molecule = Molecule.from_smiles(mol_data.smiles, allow_undefined_stereo=True)
+        print(f"[DEBUG] Molecule {idx}: Molecule from SMILES in {time.time() - t_mol_start:.2f}s")
+
+        if not molecule.conformers:
+            if mol_data.conformer is not None:
+                molecule.add_conformer(mol_data.conformer * unit.angstrom)
+            else:
+                molecule.generate_conformers(n_conformers=1)
+        elif mol_data.conformer is not None:
+            molecule.conformers[0] = mol_data.conformer * unit.angstrom
+
+        # Get MPFIT timing from metadata if available, otherwise re-compute
+        mpfit_charges = mpfit_charges_precomputed
+        mpfit_time = None
+
+        if mol_data.qm_metadata and 'calculation_time' in mol_data.qm_metadata:
+            mpfit_time = mol_data.qm_metadata['calculation_time']
+            print(f"[DEBUG] Molecule {idx}: MPFIT timing from metadata: {mpfit_time:.2f}s")
+        else:
+            # Re-compute MPFIT charges to get timing (GDMA + SVD fitting)
+            print(f"[DEBUG] Molecule {idx}: Computing MPFIT charges (GDMA + SVD)...")
+            mpfit_calculator = MPFITCalculator()
+            mpfit_result = mpfit_calculator.compute(molecule)
+            mpfit_time = mpfit_result.time_seconds
+            mpfit_charges = mpfit_result.charges
+            print(f"[DEBUG] Molecule {idx}: MPFIT charge generation: {mpfit_time:.2f}s")
+
+            # Verify re-computed charges match pre-computed ones
+            charge_diff = np.max(np.abs(mpfit_charges - mpfit_charges_precomputed))
+            if charge_diff > 1e-4:
+                print(f"[WARNING] Molecule {idx}: MPFIT charge mismatch (max diff: {charge_diff:.6f})")
+
+        # Validate ESP (temp directory and environment are handled by worker wrapper)
+        print(f"[DEBUG] Molecule {idx}: Starting ESP validation")
+        t_esp_start = time.time()
+        validation = validate_molecule_esp(
+            molecule, mpfit_charges, gnn_charges,
+            qm_method=qm_method,
+            qm_basis=qm_basis,
+            include_am1bcc=True,
+            include_resp=True
+        )
+        print(f"[DEBUG] Molecule {idx}: ESP validation completed in {time.time() - t_esp_start:.2f}s")
+
+        # Extract atomic numbers for carbon filtering
+        atomic_numbers = mol_data.atomic_features['atomic_numbers']
+        carbon_mask = (atomic_numbers == 6)
+
+        total_time = time.time() - t_molecule_start
+        print(f"[DEBUG] Molecule {idx}: TOTAL TIME = {total_time:.2f}s")
+
+        return {
+            'idx': idx,
+            'success': validation['success'],
+            'validation': validation,
+            'mpfit_time': mpfit_time,
+            'gnn_inference_time': gnn_inference_time,
+            'mpfit_charges': mpfit_charges,
+            'gnn_charges': gnn_charges,
+            'carbon_mask': carbon_mask
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to validate molecule {idx}: {e}")
+        print(f"[DEBUG] Molecule {idx}: FAILED after {time.time() - t_molecule_start:.2f}s")
+        return {
+            'idx': idx,
+            'success': False,
+            'error': str(e)
+        }
 
 
 def compute_am1bcc_charges(molecule: Molecule) -> np.ndarray:
@@ -259,24 +563,27 @@ def validate_molecule_esp(molecule: Molecule, mpfit_charges: np.ndarray,
 
     try:
         # Generate ESP grid
+        t_grid_start = time.time()
         grid_points = generate_esp_grid(molecule, conformer_idx=conformer_idx)
+        print(f"[DEBUG]   - Grid generation: {time.time() - t_grid_start:.2f}s ({len(grid_points)} points)")
 
         # Compute QM ESP
+        t_qm_start = time.time()
         qm_esp = compute_qm_esp_psi4(molecule, grid_points, qm_method, qm_basis, conformer_idx)
+        qm_esp_time = time.time() - t_qm_start
+        print(f"[DEBUG]   - QM ESP computation: {qm_esp_time:.2f}s")
 
         # Get coordinates
         conformer = molecule.conformers[conformer_idx]
         coords = conformer.m_as('angstrom')
 
-        # Calculate ESP from MPFIT charges
+        # Calculate ESP from MPFIT charges (charge generation timing was done earlier)
         mpfit_esp = calculate_esp_from_charges(coords, mpfit_charges, grid_points)
         mpfit_metrics = compare_grid_esp(qm_esp, mpfit_esp, verbose=False)
 
-        # Calculate ESP from GNN charges (time this since it's inference)
-        t_gnn_start = time.time()
+        # Calculate ESP from GNN charges (charge generation timing was done earlier)
         gnn_esp = calculate_esp_from_charges(coords, gnn_charges, grid_points)
         gnn_metrics = compare_grid_esp(qm_esp, gnn_esp, verbose=False)
-        gnn_metrics['time'] = time.time() - t_gnn_start
 
         result = {
             'success': True,
@@ -288,12 +595,16 @@ def validate_molecule_esp(molecule: Molecule, mpfit_charges: np.ndarray,
         # Optionally compute AM1-BCC charges and ESP
         if include_am1bcc:
             try:
+                print(f"[DEBUG]   - Computing AM1-BCC charges...")
                 t_am1bcc_start = time.time()
                 am1bcc_charges = compute_am1bcc_charges(molecule)
+                am1bcc_charge_time = time.time() - t_am1bcc_start  # Only charge generation
+
                 am1bcc_esp = calculate_esp_from_charges(coords, am1bcc_charges, grid_points)
                 am1bcc_metrics = compare_grid_esp(qm_esp, am1bcc_esp, verbose=False)
-                am1bcc_metrics['time'] = time.time() - t_am1bcc_start
+                am1bcc_metrics['time'] = am1bcc_charge_time  # Store only charge generation time
                 result['am1bcc'] = am1bcc_metrics
+                print(f"[DEBUG]   - AM1-BCC completed: {am1bcc_metrics['time']:.2f}s")
             except Exception as e:
                 logger.warning(f"AM1-BCC failed: {e}")
                 result['am1bcc'] = None
@@ -301,12 +612,18 @@ def validate_molecule_esp(molecule: Molecule, mpfit_charges: np.ndarray,
         # Optionally compute RESP charges and ESP
         if include_resp:
             try:
+                print(f"[DEBUG]   - Computing RESP charges...")
                 t_resp_start = time.time()
-                resp_charges = compute_resp_charges(molecule, qm_method, qm_basis, conformer_idx)
+                # Use existing ESP data instead of recalculating - saves ~220 seconds!
+                resp_charges = fit_resp_from_esp(molecule, grid_points, qm_esp, coords, qm_method, qm_basis)
+                resp_fitting_time = time.time() - t_resp_start  # Fitting time only
+
                 resp_esp = calculate_esp_from_charges(coords, resp_charges, grid_points)
                 resp_metrics = compare_grid_esp(qm_esp, resp_esp, verbose=False)
-                resp_metrics['time'] = time.time() - t_resp_start
+                # RESP requires QM ESP calculation + fitting
+                resp_metrics['time'] = qm_esp_time + resp_fitting_time
                 result['resp'] = resp_metrics
+                print(f"[DEBUG]   - RESP completed: {resp_metrics['time']:.2f}s (QM ESP: {qm_esp_time:.2f}s + fitting: {resp_fitting_time:.2f}s)")
             except Exception as e:
                 logger.warning(f"RESP failed: {e}")
                 result['resp'] = None
@@ -330,14 +647,16 @@ def main():
                        help="Directory containing trained model")
     parser.add_argument("--output-dir", type=str, default="figures",
                        help="Output directory for results")
-    parser.add_argument("--n-molecules", type=int, default=20,
-                       help="Number of test molecules to validate")
+    parser.add_argument("--n-molecules", type=int, default=None,
+                       help="Number of test molecules to validate (default: all test molecules)")
     parser.add_argument("--qm-method", type=str, default="hf",
                        help="QM method for ESP calculation")
     parser.add_argument("--qm-basis", type=str, default="6-31G*",
                        help="Basis set for ESP calculation")
     parser.add_argument("--device", type=str, default="cpu",
                        help="Device for model inference")
+    parser.add_argument("--n-jobs", type=int, default=8,
+                       help="Number of parallel jobs for ESP validation (default: 8, use -1 for all cores, 1 for sequential)")
 
     args = parser.parse_args()
 
@@ -357,14 +676,59 @@ def main():
     molecule_data_list, metadata = load_dataset_hdf5(args.dataset)
 
     # Get test molecules
-    split_indices = metadata.get('split_indices', {}) if metadata else {}
-    test_indices = split_indices.get('test', list(range(min(args.n_molecules, len(molecule_data_list)))))
-    test_indices = test_indices[:args.n_molecules]
+    if metadata and 'splits' in metadata:
+        # Metadata contains molecule IDs, not indices - need to convert
+        test_molecule_ids = metadata['splits'].get('test', [])
+        if test_molecule_ids:
+            # Create mapping from molecule_id to index
+            id_to_idx = {mol.molecule_id: idx for idx, mol in enumerate(molecule_data_list)}
+            test_indices = [id_to_idx[mol_id] for mol_id in test_molecule_ids if mol_id in id_to_idx]
+        else:
+            test_indices = list(range(len(molecule_data_list)))
+    else:
+        # Fallback: validate all molecules if no split info
+        logger.warning("No split information found in metadata - validating all molecules")
+        test_indices = list(range(len(molecule_data_list)))
+
+    # Optionally limit number of molecules
+    if args.n_molecules is not None:
+        test_indices = test_indices[:args.n_molecules]
 
     logger.info(f"Validating {len(test_indices)} test molecules")
     logger.info(f"QM method: {args.qm_method}/{args.qm_basis}")
+    logger.info(f"Running in parallel with {args.n_jobs} jobs")
 
-    # Validate each molecule
+    # Validate each molecule in parallel
+    from joblib import Parallel, delayed
+
+    # Pass model directory (not checkpoint path) - load_model() will append the checkpoint path
+    # IMPORTANT: Convert to absolute path for multiprocessing (workers change directories)
+    model_dir = Path(args.model_dir).resolve()
+
+    # Choose worker function based on parallelism
+    if args.n_jobs == 1:
+        logger.info("Starting sequential ESP validation...")
+        # Sequential: use direct function (no worker wrapper needed)
+        validation_results = [
+            validate_single_molecule(
+                idx, molecule_data_list[idx], model_dir,
+                args.qm_method, args.qm_basis, args.device
+            )
+            for idx in test_indices
+        ]
+    else:
+        logger.info(f"Starting parallel ESP validation with {args.n_jobs} workers...")
+        # Parallel: use worker wrapper with thread isolation
+        # Use 'loky' backend - more robust for scientific computing with C extensions
+        validation_results = Parallel(n_jobs=args.n_jobs, backend='loky', verbose=10)(
+            delayed(validate_single_molecule_worker)(
+                idx, molecule_data_list[idx], model_dir,
+                args.qm_method, args.qm_basis, args.device
+            )
+            for idx in test_indices
+        )
+
+    # Aggregate results
     results = {
         'mpfit': {'mae': [], 'rmse': [], 'time': []},
         'am1bcc': {'mae': [], 'rmse': [], 'time': []},
@@ -372,72 +736,48 @@ def main():
         'gnn': {'mae': [], 'rmse': [], 'time': []}
     }
 
+    carbon_charges_ref = []
+    carbon_charges_pred = []
     successful = 0
     failed = 0
 
-    for idx in tqdm(test_indices, desc="Validating molecules"):
-        mol_data = molecule_data_list[idx]
-        mpfit_charges = mol_data.target_charges
-
-        # Get MPFIT computation time from dataset metadata (if available)
-        mpfit_time = getattr(mol_data, 'computation_time', None)
-
-        # Predict charges with GNN
-        t_gnn_inference_start = time.time()
-        gnn_charges = predict_charges(model, mol_data, device=args.device)
-        gnn_inference_time = time.time() - t_gnn_inference_start
-
-        # Reconstruct OpenFF molecule for ESP calculation
-        from openff.toolkit import Molecule
-        from openff.units import unit
-
-        molecule = Molecule.from_smiles(mol_data.smiles, allow_undefined_stereo=True)
-
-        # CRITICAL: Ensure molecule has conformer for AM1-BCC/RESP
-        if not molecule.conformers:
-            if mol_data.conformer is not None:
-                # Use MPFIT-optimized conformer from dataset
-                molecule.add_conformer(mol_data.conformer * unit.angstrom)
-            else:
-                # Fallback: generate conformer
-                logger.warning(f"Generating conformer for molecule {idx}")
-                molecule.generate_conformers(n_conformers=1)
-        elif mol_data.conformer is not None:
-            # Replace with MPFIT-optimized conformer (preferred)
-            molecule.conformers[0] = mol_data.conformer * unit.angstrom
-
-        # Validate ESP (AM1-BCC and RESP computed inside validate_molecule_esp)
-        validation = validate_molecule_esp(
-            molecule, mpfit_charges, gnn_charges,
-            qm_method=args.qm_method,
-            qm_basis=args.qm_basis,
-            include_am1bcc=True,
-            include_resp=True
-        )
-
-        if validation['success']:
-            results['mpfit']['mae'].append(validation['mpfit']['mae'])
-            results['mpfit']['rmse'].append(validation['mpfit']['rmse'])
-            if mpfit_time is not None:
-                results['mpfit']['time'].append(mpfit_time)
-
-            if 'am1bcc' in validation and validation['am1bcc'] is not None:
-                results['am1bcc']['mae'].append(validation['am1bcc']['mae'])
-                results['am1bcc']['rmse'].append(validation['am1bcc']['rmse'])
-                results['am1bcc']['time'].append(validation['am1bcc']['time'])
-
-            if 'resp' in validation and validation['resp'] is not None:
-                results['resp']['mae'].append(validation['resp']['mae'])
-                results['resp']['rmse'].append(validation['resp']['rmse'])
-                results['resp']['time'].append(validation['resp']['time'])
-
-            results['gnn']['mae'].append(validation['gnn']['mae'])
-            results['gnn']['rmse'].append(validation['gnn']['rmse'])
-            # Total GNN time = inference + ESP calculation
-            results['gnn']['time'].append(gnn_inference_time + validation['gnn']['time'])
-            successful += 1
-        else:
+    for result in validation_results:
+        if not result['success']:
             failed += 1
+            continue
+
+        validation = result['validation']
+        mpfit_time = result['mpfit_time']
+        gnn_inference_time = result['gnn_inference_time']
+
+        results['mpfit']['mae'].append(validation['mpfit']['mae'])
+        results['mpfit']['rmse'].append(validation['mpfit']['rmse'])
+        if mpfit_time is not None:
+            results['mpfit']['time'].append(mpfit_time)
+
+        if 'am1bcc' in validation and validation['am1bcc'] is not None:
+            results['am1bcc']['mae'].append(validation['am1bcc']['mae'])
+            results['am1bcc']['rmse'].append(validation['am1bcc']['rmse'])
+            results['am1bcc']['time'].append(validation['am1bcc']['time'])
+
+        if 'resp' in validation and validation['resp'] is not None:
+            results['resp']['mae'].append(validation['resp']['mae'])
+            results['resp']['rmse'].append(validation['resp']['rmse'])
+            results['resp']['time'].append(validation['resp']['time'])
+
+        results['gnn']['mae'].append(validation['gnn']['mae'])
+        results['gnn']['rmse'].append(validation['gnn']['rmse'])
+        results['gnn']['time'].append(gnn_inference_time)  # Only inference time, not ESP validation
+
+        # Collect carbon charges
+        mpfit_charges = result['mpfit_charges']
+        gnn_charges = result['gnn_charges']
+        carbon_mask = result['carbon_mask']
+
+        carbon_charges_ref.extend(mpfit_charges[carbon_mask])
+        carbon_charges_pred.extend(gnn_charges[carbon_mask])
+
+        successful += 1
 
     logger.info("="*60)
     logger.info(f"ESP Validation Complete")
@@ -554,12 +894,26 @@ def main():
     logger.info("\nGenerating comparison plots...")
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent / 'figures'))
-    from plot_comparison import create_esp_violin_plot
+    from plot_comparison import create_esp_violin_plot, create_carbon_charge_hexbin
 
-    plot_file = create_esp_violin_plot(results, output_dir=output_dir,
-                                       qm_method=args.qm_method, qm_basis=args.qm_basis)
+    # ESP violin plots (separate MAE and RMSE)
+    mae_file, rmse_file = create_esp_violin_plot(results, output_dir=output_dir,
+                                                  qm_method=args.qm_method, qm_basis=args.qm_basis)
+    logger.info(f"✓ ESP MAE plot saved to {mae_file}")
+    logger.info(f"✓ ESP RMSE plot saved to {rmse_file}")
 
-    logger.info(f"✓ Plot saved to {plot_file}")
+    # Carbon charge hexbin plot
+    if len(carbon_charges_ref) > 0:
+        logger.info(f"\nGenerating carbon charge hexbin plot ({len(carbon_charges_ref)} carbon atoms)...")
+        hexbin_file = create_carbon_charge_hexbin(
+            np.array(carbon_charges_ref),
+            np.array(carbon_charges_pred),
+            output_dir=output_dir
+        )
+        logger.info(f"✓ Carbon hexbin plot saved to {hexbin_file}")
+    else:
+        logger.warning("No carbon atoms found in dataset - skipping hexbin plot")
+
     logger.info("\nDone!")
 
 

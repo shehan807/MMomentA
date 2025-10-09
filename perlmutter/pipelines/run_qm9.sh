@@ -117,16 +117,18 @@ python scripts/validate_esp_comparison.py \
     --dataset data/qm9_mpfit.h5 \
     --model-dir runs/qm9_multipoles \
     --output-dir figures/qm9_esp_validation \
-    --n-molecules 20 \
     --qm-method hf \
     --qm-basis "6-31G*" \
-    --device cpu
+    --device cpu \
+    --n-jobs 8
 
 echo ""
 echo "================================================"
 echo "QM9 Pipeline Complete!"
 echo "================================================"
 echo "Training results: runs/qm9_{baseline,multipoles}/"
-echo "ESP validation: figures/qm9_esp_validation/esp_validation_all_methods.png"
+echo "ESP validation plots:"
+echo "  - ESP violin plot: figures/qm9_esp_validation/esp_validation_all_methods.png"
+echo "  - Carbon hexbin:   figures/qm9_esp_validation/carbon_charge_hexbin.png"
 echo "Validation metrics: figures/qm9_esp_validation/esp_validation_results.json"
 echo ""

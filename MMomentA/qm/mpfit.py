@@ -1,6 +1,7 @@
 """MPFIT charge calculation using GDMA multipole moments."""
 
 import time
+import warnings
 import numpy as np
 from dataclasses import dataclass
 from typing import Tuple, Dict, Any, Optional
@@ -118,7 +119,11 @@ class MPFITCalculator:
                 molecule, conformer, multipoles, self.qc_settings
             )
 
-            charge_parameter = generate_mpfit_charge_parameter([qc_record], self.solver)
+            # Suppress charge conservation warnings from openff-recharge
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message=".*total charge was not conserved.*")
+                warnings.filterwarnings("ignore", message=".*Could not verify constraint satisfaction.*")
+                charge_parameter = generate_mpfit_charge_parameter([qc_record], self.solver)
 
             charges = np.array(charge_parameter.value)
 

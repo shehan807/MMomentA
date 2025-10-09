@@ -293,10 +293,12 @@ def create_correlation_subplot_figure(results: Dict,
 
 def create_esp_violin_plot(metrics: Dict,
                           output_dir: str = ".",
-                          figsize: Tuple[float, float] = (14, 6),
+                          figsize: Tuple[float, float] = (8, 6),
                           qm_method: str = 'hf',
-                          qm_basis: str = '6-31G*') -> str:
+                          qm_basis: str = '6-31G*') -> Tuple[str, str]:
     """Create publication-quality violin plots for ESP validation: MPFIT, AM1-BCC, RESP, MMomentA-GNN
+
+    Creates TWO separate figures: one for MAE and one for RMSE.
 
     Parameters
     ----------
@@ -305,7 +307,7 @@ def create_esp_violin_plot(metrics: Dict,
     output_dir : str
         Directory to save output plot
     figsize : tuple
-        Figure size (width, height)
+        Figure size (width, height) for each plot
     qm_method : str
         QM method used for ESP calculation
     qm_basis : str
@@ -313,14 +315,12 @@ def create_esp_violin_plot(metrics: Dict,
 
     Returns
     -------
-    str
-        Path to saved plot file
+    tuple of str
+        Paths to saved MAE and RMSE plot files
     """
 
     setup_publication_style()
     colors = get_method_colors()
-
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
 
     # Build lists of methods that actually have data
     method_keys = ['mpfit', 'am1bcc', 'resp', 'gnn']
@@ -337,13 +337,15 @@ def create_esp_violin_plot(metrics: Dict,
             mae_labels.append(method_labels[key])
             mae_colors.append(colors[color_keys[key]])
 
-    # MAE Violin Plot
+    # ========== MAE Figure ==========
+    fig_mae, ax_mae = plt.subplots(figsize=figsize)
+
     if mae_data:
-        parts1 = ax1.violinplot(mae_data, positions=range(len(mae_labels)),
-                               showmeans=True, showmedians=True, widths=0.6)
+        parts_mae = ax_mae.violinplot(mae_data, positions=range(len(mae_labels)),
+                                      showmeans=True, showmedians=True, widths=0.6)
 
         # Style the violin plots
-        for patch, color in zip(parts1['bodies'], mae_colors):
+        for patch, color in zip(parts_mae['bodies'], mae_colors):
             patch.set_facecolor(color)
             patch.set_alpha(0.8)
             patch.set_edgecolor('white')
@@ -351,16 +353,25 @@ def create_esp_violin_plot(metrics: Dict,
 
         # Style the statistical lines
         for partname in ('cbars', 'cmins', 'cmaxes', 'cmedians', 'cmeans'):
-            if partname in parts1:
-                parts1[partname].set_color('black')
-                parts1[partname].set_linewidth(1.5)
+            if partname in parts_mae:
+                parts_mae[partname].set_color('black')
+                parts_mae[partname].set_linewidth(1.5)
 
-        ax1.set_xticks(range(len(mae_labels)))
-        ax1.set_xticklabels(mae_labels, fontweight='bold', rotation=15, ha='right')
-        ax1.set_ylabel('MAE (a.u.)', fontweight='bold')
-        ax1.set_title(f'ESP Validation MAE\n({qm_method}/{qm_basis})', fontweight='bold', pad=20)
-        ax1.grid(True, alpha=0.3, axis='y')
+        ax_mae.set_xticks(range(len(mae_labels)))
+        ax_mae.set_xticklabels(mae_labels, fontweight='bold', rotation=15, ha='right')
+        ax_mae.set_ylabel('MAE (a.u.)', fontweight='bold')
+        ax_mae.set_title(f'ESP Validation MAE\n({qm_method}/{qm_basis})', fontweight='bold', pad=20)
+        ax_mae.grid(True, alpha=0.3, axis='y')
 
+    plt.tight_layout()
+    fig_mae.patch.set_facecolor('white')
+
+    mae_file = Path(output_dir) / "esp_validation_mae.png"
+    plt.savefig(mae_file, dpi=300, bbox_inches='tight', facecolor='white')
+    print(f"✓ ESP validation MAE plot saved to: {mae_file}")
+    plt.close(fig_mae)
+
+    # ========== RMSE Figure ==========
     rmse_data = []
     rmse_labels = []
     rmse_colors = []
@@ -371,13 +382,14 @@ def create_esp_violin_plot(metrics: Dict,
             rmse_labels.append(method_labels[key])
             rmse_colors.append(colors[color_keys[key]])
 
-    # RMSE Violin Plot
+    fig_rmse, ax_rmse = plt.subplots(figsize=figsize)
+
     if rmse_data:
-        parts2 = ax2.violinplot(rmse_data, positions=range(len(rmse_labels)),
-                               showmeans=True, showmedians=True, widths=0.6)
+        parts_rmse = ax_rmse.violinplot(rmse_data, positions=range(len(rmse_labels)),
+                                        showmeans=True, showmedians=True, widths=0.6)
 
         # Style the violin plots
-        for patch, color in zip(parts2['bodies'], rmse_colors):
+        for patch, color in zip(parts_rmse['bodies'], rmse_colors):
             patch.set_facecolor(color)
             patch.set_alpha(0.8)
             patch.set_edgecolor('white')
@@ -385,27 +397,137 @@ def create_esp_violin_plot(metrics: Dict,
 
         # Style the statistical lines
         for partname in ('cbars', 'cmins', 'cmaxes', 'cmedians', 'cmeans'):
-            if partname in parts2:
-                parts2[partname].set_color('black')
-                parts2[partname].set_linewidth(1.5)
+            if partname in parts_rmse:
+                parts_rmse[partname].set_color('black')
+                parts_rmse[partname].set_linewidth(1.5)
 
-        ax2.set_xticks(range(len(rmse_labels)))
-        ax2.set_xticklabels(rmse_labels, fontweight='bold', rotation=15, ha='right')
-        ax2.set_ylabel('RMSE (a.u.)', fontweight='bold')
-        ax2.set_title(f'ESP Validation RMSE\n({qm_method}/{qm_basis})', fontweight='bold', pad=20)
-        ax2.grid(True, alpha=0.3, axis='y')
+        ax_rmse.set_xticks(range(len(rmse_labels)))
+        ax_rmse.set_xticklabels(rmse_labels, fontweight='bold', rotation=15, ha='right')
+        ax_rmse.set_ylabel('RMSE (a.u.)', fontweight='bold')
+        ax_rmse.set_title(f'ESP Validation RMSE\n({qm_method}/{qm_basis})', fontweight='bold', pad=20)
+        ax_rmse.grid(True, alpha=0.3, axis='y')
 
-    # Overall figure styling
+    plt.tight_layout()
+    fig_rmse.patch.set_facecolor('white')
+
+    rmse_file = Path(output_dir) / "esp_validation_rmse.png"
+    plt.savefig(rmse_file, dpi=300, bbox_inches='tight', facecolor='white')
+    print(f"✓ ESP validation RMSE plot saved to: {rmse_file}")
+    plt.close(fig_rmse)
+
+    return str(mae_file), str(rmse_file)
+
+
+def create_carbon_charge_hexbin(q_ref: np.ndarray,
+                                q_pred: np.ndarray,
+                                output_dir: str = ".",
+                                figsize: Tuple[float, float] = (7, 6.5)) -> str:
+    """Create publication-quality 2D histogram (hexbin) of carbon atom charges.
+
+    Parameters
+    ----------
+    q_ref : np.ndarray
+        Reference charges (MPFIT) for carbon atoms only, shape (M,)
+    q_pred : np.ndarray
+        Predicted charges (MMomentA-GNN) for carbon atoms only, shape (M,)
+    output_dir : str
+        Directory to save output plot
+    figsize : tuple
+        Figure size (width, height)
+
+    Returns
+    -------
+    str
+        Path to saved plot file
+    """
+
+    setup_publication_style()
+
+    # Filter out NaNs and infs
+    valid_mask = np.isfinite(q_ref) & np.isfinite(q_pred)
+    q_ref = q_ref[valid_mask]
+    q_pred = q_pred[valid_mask]
+
+    if len(q_ref) == 0:
+        raise ValueError("No valid carbon atom charges after filtering NaNs/infs")
+
+    # Determine plot limits (5% expansion)
+    q_min = min(q_ref.min(), q_pred.min())
+    q_max = max(q_ref.max(), q_pred.max())
+    q_range = q_max - q_min
+    plot_min = q_min - 0.05 * q_range
+    plot_max = q_max + 0.05 * q_range
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Create 2D hexbin histogram
+    hexbin = ax.hexbin(q_ref, q_pred,
+                       gridsize=100,
+                       C=None,  # Use count
+                       reduce_C_function=np.size,
+                       cmap='viridis',
+                       mincnt=1,
+                       extent=(plot_min, plot_max, plot_min, plot_max),
+                       linewidths=0.1,
+                       edgecolors='none')
+
+    # Convert counts to log10 scale
+    counts = hexbin.get_array()
+    log_counts = np.log10(counts)
+    hexbin.set_array(log_counts)
+
+    # Colorbar
+    cbar = plt.colorbar(hexbin, ax=ax)
+    cbar.set_label('$\\log_{10}$(N)', fontsize=10, fontweight='bold')
+    cbar.ax.tick_params(labelsize=8)
+
+    # Parity line (y = x)
+    ax.plot([plot_min, plot_max], [plot_min, plot_max],
+            'k--', linewidth=1.0, alpha=0.7, zorder=10, label='Parity')
+
+    # Accuracy bands (y = x ± 0.05)
+    ax.plot([plot_min, plot_max], [plot_min + 0.05, plot_max + 0.05],
+            'k-', linewidth=0.5, alpha=0.5, zorder=9)
+    ax.plot([plot_min, plot_max], [plot_min - 0.05, plot_max - 0.05],
+            'k-', linewidth=0.5, alpha=0.5, zorder=9)
+
+    # Compute robust statistics (linear fit)
+    from scipy import stats
+    slope, intercept, r_value, p_value, std_err = stats.linregress(q_ref, q_pred)
+    r_squared = r_value ** 2
+
+    # Add statistics annotation (top-left corner)
+    stats_text = f'Slope: {slope:.3f}\n$R^2$: {r_squared:.4f}'
+    ax.text(0.05, 0.95, stats_text,
+            transform=ax.transAxes,
+            fontsize=8,
+            verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='gray', linewidth=0.5))
+
+    # Labels and formatting
+    ax.set_xlabel('Reference charge (e)', fontsize=10, fontweight='bold')
+    ax.set_ylabel('Predicted charge (e)', fontsize=10, fontweight='bold')
+    ax.tick_params(axis='both', which='major', labelsize=9)
+
+    # Set equal aspect and limits
+    ax.set_xlim(plot_min, plot_max)
+    ax.set_ylim(plot_min, plot_max)
+    ax.set_aspect('equal', adjustable='box')
+
+    # Clean styling (no grid, thin spines)
+    ax.grid(False)
+    for spine in ax.spines.values():
+        spine.set_linewidth(0.8)
+
+    # Tight layout
     plt.tight_layout()
 
-    # Add subtle background
-    fig.patch.set_facecolor('white')
-
     # Save plot
-    output_file = Path(output_dir) / "esp_validation_all_methods.png"
+    output_file = Path(output_dir) / "carbon_charge_hexbin.png"
     plt.savefig(output_file, dpi=300, bbox_inches='tight', facecolor='white')
 
-    print(f"✓ ESP validation violin plot saved to: {output_file}")
+    print(f"✓ Carbon charge hexbin plot saved to: {output_file}")
     plt.close()
 
     return str(output_file)

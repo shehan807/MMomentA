@@ -77,7 +77,7 @@ echo "✓ ZINC 1k MPFIT dataset created"
 echo ""
 
 # Step 3: Train baseline model (no multipoles)
-echo "Step 3/6: Training baseline model (1000 epochs)..."
+echo "Step 3/6: Training baseline model (5000 epochs, espaloma-charge settings)..."
 conda activate "$ML_ENV"
 
 if [ -f "/global/u1/p/parmar/MoML/MMomentA/runs/zinc_1k_baseline/checkpoints/best_model.pt" ]; then
@@ -87,8 +87,8 @@ else
         --dataset data/zinc_1k_mpfit.h5 \
         --output-dir runs/zinc_1k_baseline \
         --no-multipoles \
-        --n-epochs 1000 \
-        --width 128 \
+        --n-epochs 5000 \
+        --width 32 \
         --device cuda
     echo "✓ ZINC 1k baseline model trained"
 fi

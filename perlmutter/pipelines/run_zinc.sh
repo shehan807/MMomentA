@@ -52,19 +52,19 @@ echo "✓ ZINC MPFIT dataset created"
 echo ""
 
 # Step 3: Train baseline model (no multipoles)
-echo "Step 3/6: Training baseline model (1000 epochs)..."
+echo "Step 3/6: Training baseline model (5000 epochs, espaloma-charge settings)..."
 conda activate "$ML_ENV"
 
 if [ -f "/global/u1/p/parmar/MoML/MMomentA/runs/zinc_baseline/checkpoints/best_model.pt" ]; then
     echo "✓ ZINC baseline model already trained (found checkpoint), skipping..."
 else
-    # Baseline: 117 features → 128 hidden (default settings)
+    # Baseline: espaloma-charge settings (width=32, input=128, 5000 epochs)
     python scripts/train_spice.py \
         --dataset data/zinc_mpfit.h5 \
         --output-dir runs/zinc_baseline \
         --no-multipoles \
-        --n-epochs 1000 \
-        --width 128 \
+        --n-epochs 5000 \
+        --width 32 \
         --device cuda
     echo "✓ ZINC baseline model trained"
 fi

@@ -68,8 +68,8 @@ def main():
     parser.add_argument(
         "--width",
         type=int,
-        default=128,
-        help="Hidden dimension for graph convolution"
+        default=32,
+        help="Hidden dimension for graph convolution (espaloma-charge uses 32)"
     )
     parser.add_argument(
         "--input-units",
@@ -200,12 +200,9 @@ def main():
 
     # Smart defaults for input_units based on feature dimension
     if args.input_units is None:
-        if actual_feature_dim > 150:  # Multipole model
-            input_units = 256
-            logger.info(f"Auto-setting input_units=256 for multipole model (features={actual_feature_dim})")
-        else:  # Baseline model
-            input_units = 128
-            logger.info(f"Auto-setting input_units=128 for baseline model (features={actual_feature_dim})")
+        # Match espaloma-charge: input_units = 128, width = 32
+        input_units = 128
+        logger.info(f"Auto-setting input_units=128 (espaloma-charge default)")
     else:
         input_units = args.input_units
 

@@ -119,7 +119,8 @@ python scripts/validate_esp_comparison.py \
     --output-dir figures/qm9_esp_validation \
     --qm-method hf \
     --qm-basis "6-31G*" \
-    --device cpu
+    --device cpu \
+    --n-jobs -1
 
 echo ""
 echo "================================================"

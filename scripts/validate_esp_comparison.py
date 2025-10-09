@@ -224,6 +224,78 @@ def predict_charges(model: ChargeModel, mol_data: MoleculeData,
     return predicted_charges
 
 
+def validate_single_molecule(idx: int, mol_data: MoleculeData, model_path: Path,
+                             qm_method: str, qm_basis: str, device: str) -> dict:
+    """Validate a single molecule (for parallel processing).
+
+    This function is designed to be called in parallel - it loads its own model
+    and performs all validations independently.
+    """
+    import os
+    import tempfile
+    from openff.toolkit import Molecule
+    from openff.units import unit
+
+    # Load model (each worker loads its own copy)
+    model = load_model(model_path, device=device)
+
+    try:
+        mpfit_charges = mol_data.target_charges
+        mpfit_time = mol_data.qm_metadata.get('calculation_time', None) if mol_data.qm_metadata else None
+
+        # Predict charges with GNN
+        t_gnn_start = time.time()
+        gnn_charges = predict_charges(model, mol_data, device=device)
+        gnn_inference_time = time.time() - t_gnn_start
+
+        # Reconstruct molecule
+        molecule = Molecule.from_smiles(mol_data.smiles, allow_undefined_stereo=True)
+
+        if not molecule.conformers:
+            if mol_data.conformer is not None:
+                molecule.add_conformer(mol_data.conformer * unit.angstrom)
+            else:
+                molecule.generate_conformers(n_conformers=1)
+        elif mol_data.conformer is not None:
+            molecule.conformers[0] = mol_data.conformer * unit.angstrom
+
+        # Use temporary directory for Psi4 scratch files
+        with tempfile.TemporaryDirectory(prefix=f'esp_val_{idx}_') as temp_dir:
+            os.environ['PSI_SCRATCH'] = temp_dir
+
+            # Validate ESP
+            validation = validate_molecule_esp(
+                molecule, mpfit_charges, gnn_charges,
+                qm_method=qm_method,
+                qm_basis=qm_basis,
+                include_am1bcc=True,
+                include_resp=True
+            )
+
+        # Extract atomic numbers for carbon filtering
+        atomic_numbers = mol_data.atomic_features['atomic_numbers']
+        carbon_mask = (atomic_numbers == 6)
+
+        return {
+            'idx': idx,
+            'success': validation['success'],
+            'validation': validation,
+            'mpfit_time': mpfit_time,
+            'gnn_inference_time': gnn_inference_time,
+            'mpfit_charges': mpfit_charges,
+            'gnn_charges': gnn_charges,
+            'carbon_mask': carbon_mask
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to validate molecule {idx}: {e}")
+        return {
+            'idx': idx,
+            'success': False,
+            'error': str(e)
+        }
+
+
 def compute_am1bcc_charges(molecule: Molecule) -> np.ndarray:
     """Compute AM1-BCC charges for a molecule."""
     calculator = AM1BCCCalculator()
@@ -338,6 +410,8 @@ def main():
                        help="Basis set for ESP calculation")
     parser.add_argument("--device", type=str, default="cpu",
                        help="Device for model inference")
+    parser.add_argument("--n-jobs", type=int, default=-1,
+                       help="Number of parallel jobs for ESP validation (-1 for all CPUs)")
 
     args = parser.parse_args()
 
@@ -366,8 +440,23 @@ def main():
 
     logger.info(f"Validating {len(test_indices)} test molecules")
     logger.info(f"QM method: {args.qm_method}/{args.qm_basis}")
+    logger.info(f"Running in parallel with {args.n_jobs} jobs")
 
-    # Validate each molecule
+    # Validate each molecule in parallel
+    from joblib import Parallel, delayed
+
+    model_path = Path(args.model_dir) / "checkpoints" / "best_model.pt"
+
+    logger.info("Starting parallel ESP validation...")
+    validation_results = Parallel(n_jobs=args.n_jobs, backend='multiprocessing', verbose=10)(
+        delayed(validate_single_molecule)(
+            idx, molecule_data_list[idx], model_path,
+            args.qm_method, args.qm_basis, args.device
+        )
+        for idx in test_indices
+    )
+
+    # Aggregate results
     results = {
         'mpfit': {'mae': [], 'rmse': [], 'time': []},
         'am1bcc': {'mae': [], 'rmse': [], 'time': []},
@@ -375,86 +464,48 @@ def main():
         'gnn': {'mae': [], 'rmse': [], 'time': []}
     }
 
-    # Collect carbon atom charges for hexbin plot
-    carbon_charges_ref = []  # MPFIT charges for carbon atoms
-    carbon_charges_pred = []  # GNN charges for carbon atoms
-
+    carbon_charges_ref = []
+    carbon_charges_pred = []
     successful = 0
     failed = 0
 
-    for idx in tqdm(test_indices, desc="Validating molecules"):
-        mol_data = molecule_data_list[idx]
-        mpfit_charges = mol_data.target_charges
-
-        # Get MPFIT computation time from dataset metadata (if available)
-        # It's stored in qm_metadata['calculation_time']
-        mpfit_time = mol_data.qm_metadata.get('calculation_time', None) if mol_data.qm_metadata else None
-
-        # Predict charges with GNN
-        t_gnn_inference_start = time.time()
-        gnn_charges = predict_charges(model, mol_data, device=args.device)
-        gnn_inference_time = time.time() - t_gnn_inference_start
-
-        # Reconstruct OpenFF molecule for ESP calculation
-        from openff.toolkit import Molecule
-        from openff.units import unit
-
-        molecule = Molecule.from_smiles(mol_data.smiles, allow_undefined_stereo=True)
-
-        # CRITICAL: Ensure molecule has conformer for AM1-BCC/RESP
-        if not molecule.conformers:
-            if mol_data.conformer is not None:
-                # Use MPFIT-optimized conformer from dataset
-                molecule.add_conformer(mol_data.conformer * unit.angstrom)
-            else:
-                # Fallback: generate conformer
-                logger.warning(f"Generating conformer for molecule {idx}")
-                molecule.generate_conformers(n_conformers=1)
-        elif mol_data.conformer is not None:
-            # Replace with MPFIT-optimized conformer (preferred)
-            molecule.conformers[0] = mol_data.conformer * unit.angstrom
-
-        # Validate ESP (AM1-BCC and RESP computed inside validate_molecule_esp)
-        validation = validate_molecule_esp(
-            molecule, mpfit_charges, gnn_charges,
-            qm_method=args.qm_method,
-            qm_basis=args.qm_basis,
-            include_am1bcc=True,
-            include_resp=True
-        )
-
-        if validation['success']:
-            results['mpfit']['mae'].append(validation['mpfit']['mae'])
-            results['mpfit']['rmse'].append(validation['mpfit']['rmse'])
-            if mpfit_time is not None:
-                results['mpfit']['time'].append(mpfit_time)
-
-            if 'am1bcc' in validation and validation['am1bcc'] is not None:
-                results['am1bcc']['mae'].append(validation['am1bcc']['mae'])
-                results['am1bcc']['rmse'].append(validation['am1bcc']['rmse'])
-                results['am1bcc']['time'].append(validation['am1bcc']['time'])
-
-            if 'resp' in validation and validation['resp'] is not None:
-                results['resp']['mae'].append(validation['resp']['mae'])
-                results['resp']['rmse'].append(validation['resp']['rmse'])
-                results['resp']['time'].append(validation['resp']['time'])
-
-            results['gnn']['mae'].append(validation['gnn']['mae'])
-            results['gnn']['rmse'].append(validation['gnn']['rmse'])
-            # Total GNN time = inference + ESP calculation
-            results['gnn']['time'].append(gnn_inference_time + validation['gnn']['time'])
-
-            # Collect carbon atom charges for hexbin plot
-            # Extract atomic numbers from mol_data (it's a dict)
-            atomic_numbers = mol_data.atomic_features['atomic_numbers']
-            carbon_mask = (atomic_numbers == 6)  # Carbon = atomic number 6
-
-            carbon_charges_ref.extend(mpfit_charges[carbon_mask])
-            carbon_charges_pred.extend(gnn_charges[carbon_mask])
-
-            successful += 1
-        else:
+    for result in validation_results:
+        if not result['success']:
             failed += 1
+            continue
+
+        validation = result['validation']
+        mpfit_time = result['mpfit_time']
+        gnn_inference_time = result['gnn_inference_time']
+
+        results['mpfit']['mae'].append(validation['mpfit']['mae'])
+        results['mpfit']['rmse'].append(validation['mpfit']['rmse'])
+        if mpfit_time is not None:
+            results['mpfit']['time'].append(mpfit_time)
+
+        if 'am1bcc' in validation and validation['am1bcc'] is not None:
+            results['am1bcc']['mae'].append(validation['am1bcc']['mae'])
+            results['am1bcc']['rmse'].append(validation['am1bcc']['rmse'])
+            results['am1bcc']['time'].append(validation['am1bcc']['time'])
+
+        if 'resp' in validation and validation['resp'] is not None:
+            results['resp']['mae'].append(validation['resp']['mae'])
+            results['resp']['rmse'].append(validation['resp']['rmse'])
+            results['resp']['time'].append(validation['resp']['time'])
+
+        results['gnn']['mae'].append(validation['gnn']['mae'])
+        results['gnn']['rmse'].append(validation['gnn']['rmse'])
+        results['gnn']['time'].append(gnn_inference_time + validation['gnn']['time'])
+
+        # Collect carbon charges
+        mpfit_charges = result['mpfit_charges']
+        gnn_charges = result['gnn_charges']
+        carbon_mask = result['carbon_mask']
+
+        carbon_charges_ref.extend(mpfit_charges[carbon_mask])
+        carbon_charges_pred.extend(gnn_charges[carbon_mask])
+
+        successful += 1
 
     logger.info("="*60)
     logger.info(f"ESP Validation Complete")

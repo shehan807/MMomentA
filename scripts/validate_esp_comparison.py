@@ -44,6 +44,7 @@ from MMomentA.data.schema import MoleculeData
 from MMomentA.models import ChargeModel, ModelConfig
 from MMomentA.qm.am1bcc import AM1BCCCalculator
 from MMomentA.qm.resp import RESPCalculator
+from MMomentA.qm.mpfit import MPFITCalculator
 from esp_utils import compare_grid_esp
 
 # RESP fitting imports for reusing ESP data
@@ -54,7 +55,6 @@ from openff.recharge.esp.storage import MoleculeESPRecord
 from openff.recharge.grids import MSKGridSettings
 from openff.recharge.charges.library import LibraryChargeCollection, LibraryChargeGenerator
 from openff.units import unit as openff_unit
-from openff.units import Quantity
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -315,17 +315,13 @@ def fit_resp_from_esp(molecule: Molecule, grid_points: np.ndarray, esp_values: n
         grid_settings=MSKGridSettings()
     )
 
-    # Convert coordinates to openff Quantity with units
-    # Use Quantity() constructor to avoid pint.Quantity type mismatch
-    conformer_with_units = Quantity(conformer_coords, openff_unit.angstrom)
-
-    # Create MoleculeESPRecord from existing data
-    # Note: electric_field is not needed for RESP fitting, pass None
+    # Pass numpy arrays directly - Pydantic validator handles unit conversion internally
+    # The validator expects numpy arrays in the correct units (angstrom, hartree/e)
     esp_record = MoleculeESPRecord.from_molecule(
         molecule=molecule,
-        conformer=conformer_with_units,
-        grid_coordinates=Quantity(grid_points, openff_unit.angstrom),
-        esp=Quantity(esp_values, openff_unit.hartree / openff_unit.elementary_charge),
+        conformer=conformer_coords,        # numpy array in angstrom
+        grid_coordinates=grid_points,      # numpy array in angstrom
+        esp=esp_values,                     # numpy array in hartree/e
         electric_field=None,
         esp_settings=esp_settings
     )
@@ -450,8 +446,7 @@ def validate_single_molecule(idx: int, mol_data: MoleculeData, model_dir: Path,
     print(f"[DEBUG] Molecule {idx}: Model loaded in {time.time() - t_load_start:.2f}s")
 
     try:
-        mpfit_charges = mol_data.target_charges
-        mpfit_time = mol_data.qm_metadata.get('calculation_time', None) if mol_data.qm_metadata else None
+        mpfit_charges_precomputed = mol_data.target_charges
 
         # Predict charges with GNN
         t_gnn_start = time.time()
@@ -471,6 +466,27 @@ def validate_single_molecule(idx: int, mol_data: MoleculeData, model_dir: Path,
                 molecule.generate_conformers(n_conformers=1)
         elif mol_data.conformer is not None:
             molecule.conformers[0] = mol_data.conformer * unit.angstrom
+
+        # Get MPFIT timing from metadata if available, otherwise re-compute
+        mpfit_charges = mpfit_charges_precomputed
+        mpfit_time = None
+
+        if mol_data.qm_metadata and 'calculation_time' in mol_data.qm_metadata:
+            mpfit_time = mol_data.qm_metadata['calculation_time']
+            print(f"[DEBUG] Molecule {idx}: MPFIT timing from metadata: {mpfit_time:.2f}s")
+        else:
+            # Re-compute MPFIT charges to get timing (GDMA + SVD fitting)
+            print(f"[DEBUG] Molecule {idx}: Computing MPFIT charges (GDMA + SVD)...")
+            mpfit_calculator = MPFITCalculator()
+            mpfit_result = mpfit_calculator.compute(molecule)
+            mpfit_time = mpfit_result.time_seconds
+            mpfit_charges = mpfit_result.charges
+            print(f"[DEBUG] Molecule {idx}: MPFIT charge generation: {mpfit_time:.2f}s")
+
+            # Verify re-computed charges match pre-computed ones
+            charge_diff = np.max(np.abs(mpfit_charges - mpfit_charges_precomputed))
+            if charge_diff > 1e-4:
+                print(f"[WARNING] Molecule {idx}: MPFIT charge mismatch (max diff: {charge_diff:.6f})")
 
         # Validate ESP (temp directory and environment are handled by worker wrapper)
         print(f"[DEBUG] Molecule {idx}: Starting ESP validation")
@@ -561,18 +577,13 @@ def validate_molecule_esp(molecule: Molecule, mpfit_charges: np.ndarray,
         conformer = molecule.conformers[conformer_idx]
         coords = conformer.m_as('angstrom')
 
-        # Calculate ESP from MPFIT charges
-        t_mpfit_start = time.time()
+        # Calculate ESP from MPFIT charges (charge generation timing was done earlier)
         mpfit_esp = calculate_esp_from_charges(coords, mpfit_charges, grid_points)
         mpfit_metrics = compare_grid_esp(qm_esp, mpfit_esp, verbose=False)
-        print(f"[DEBUG]   - MPFIT ESP calc: {time.time() - t_mpfit_start:.2f}s")
 
-        # Calculate ESP from GNN charges (time this since it's inference)
-        t_gnn_start = time.time()
+        # Calculate ESP from GNN charges (charge generation timing was done earlier)
         gnn_esp = calculate_esp_from_charges(coords, gnn_charges, grid_points)
         gnn_metrics = compare_grid_esp(qm_esp, gnn_esp, verbose=False)
-        gnn_metrics['time'] = time.time() - t_gnn_start
-        print(f"[DEBUG]   - GNN ESP calc: {time.time() - t_gnn_start:.2f}s")
 
         result = {
             'success': True,

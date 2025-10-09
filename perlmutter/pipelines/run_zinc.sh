@@ -65,6 +65,7 @@ else
         --no-multipoles \
         --n-epochs 5000 \
         --width 32 \
+        --early-stopping-patience 2000 \
         --device cuda
     echo "✓ ZINC baseline model trained"
 fi
@@ -83,6 +84,7 @@ else
         --output-dir runs/zinc_multipoles \
         --n-epochs 5000 \
         --width 32 \
+        --early-stopping-patience 2000 \
         --device cuda
     echo "✓ ZINC multipole model trained"
 fi

@@ -55,7 +55,7 @@ echo ""
 echo "Step 3/6: Training baseline model (1000 epochs)..."
 conda activate "$ML_ENV"
 
-if [ -f "runs/zinc_baseline/checkpoints/best_model.pt" ]; then
+if [ -f "/global/u1/p/parmar/MoML/MMomentA/runs/zinc_baseline/checkpoints/best_model.pt" ]; then
     echo "✓ ZINC baseline model already trained (found checkpoint), skipping..."
 else
     # Note: train_spice.py works with any HDF5 dataset (not just SPICE)
@@ -72,7 +72,7 @@ echo ""
 # Step 4: Train multipole model
 echo "Step 4/6: Training multipole model (1000 epochs)..."
 
-if [ -f "runs/zinc_multipoles/checkpoints/best_model.pt" ]; then
+if [ -f "/global/u1/p/parmar/MoML/MMomentA/runs/zinc_multipoles/checkpoints/best_model.pt" ]; then
     echo "✓ ZINC multipole model already trained (found checkpoint), skipping..."
 else
     # Note: train_spice.py works with any HDF5 dataset (not just SPICE)

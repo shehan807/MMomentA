@@ -431,8 +431,19 @@ def main():
     molecule_data_list, metadata = load_dataset_hdf5(args.dataset)
 
     # Get test molecules
-    split_indices = metadata.get('split_indices', {}) if metadata else {}
-    test_indices = split_indices.get('test', list(range(len(molecule_data_list))))
+    if metadata and 'splits' in metadata:
+        # Metadata contains molecule IDs, not indices - need to convert
+        test_molecule_ids = metadata['splits'].get('test', [])
+        if test_molecule_ids:
+            # Create mapping from molecule_id to index
+            id_to_idx = {mol.molecule_id: idx for idx, mol in enumerate(molecule_data_list)}
+            test_indices = [id_to_idx[mol_id] for mol_id in test_molecule_ids if mol_id in id_to_idx]
+        else:
+            test_indices = list(range(len(molecule_data_list)))
+    else:
+        # Fallback: validate all molecules if no split info
+        logger.warning("No split information found in metadata - validating all molecules")
+        test_indices = list(range(len(molecule_data_list)))
 
     # Optionally limit number of molecules
     if args.n_molecules is not None:

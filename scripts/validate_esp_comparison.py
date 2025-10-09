@@ -133,7 +133,6 @@ def compute_qm_esp_psi4(molecule: Molecule, grid_points: np.ndarray,
     # Use Psi4's built-in ESP calculator at our grid points
     # This computes full QM ESP (nuclear + electronic contributions)
     t_esp_calc_start = time.time()
-    esp_values = np.zeros(len(grid_points))
 
     # Convert grid points to Psi4 Matrix (in Bohr)
     grid_bohr = grid_points / BOHR_TO_ANGSTROM
@@ -142,15 +141,19 @@ def compute_qm_esp_psi4(molecule: Molecule, grid_points: np.ndarray,
     Vpot = psi4.core.VBase.build(wfn.basisset(), "RV")
     Vpot.initialize()
 
-    # Compute ESP at each grid point using Psi4's native calculator
-    for i, point_bohr in enumerate(grid_bohr):
-        # Create Psi4 Vector3 for the point
-        psi4_point = psi4.core.Vector3(point_bohr[0], point_bohr[1], point_bohr[2])
+    # Convert all grid points to Psi4 Vector3 list for batch processing
+    print(f"[DEBUG]     * Converting {len(grid_points)} points to Psi4 format...")
+    t_convert_start = time.time()
+    psi4_points = [psi4.core.Vector3(pt[0], pt[1], pt[2]) for pt in grid_bohr]
+    print(f"[DEBUG]     * Conversion took: {time.time() - t_convert_start:.2f}s")
 
-        # Compute ESP (includes both nuclear and electronic contributions)
-        esp_values[i] = Vpot.compute_esp(wfn.Da(), [psi4_point])[0]
+    # Compute ESP at all grid points in one call (batch processing)
+    print(f"[DEBUG]     * Computing ESP at {len(grid_points)} points in batch...")
+    t_batch_start = time.time()
+    esp_values = np.array(Vpot.compute_esp(wfn.Da(), psi4_points))
+    print(f"[DEBUG]     * Batch ESP computation: {time.time() - t_batch_start:.2f}s")
 
-    print(f"[DEBUG]     * ESP evaluation at {len(grid_points)} points: {time.time() - t_esp_calc_start:.2f}s")
+    print(f"[DEBUG]     * Total ESP evaluation: {time.time() - t_esp_calc_start:.2f}s")
 
     return esp_values
 
@@ -285,13 +288,13 @@ def validate_single_molecule(idx: int, mol_data: MoleculeData, model_dir: Path,
         with tempfile.TemporaryDirectory(prefix=f'esp_val_{idx}_') as temp_dir:
             os.environ['PSI_SCRATCH'] = temp_dir
 
-            # Validate ESP (disable AM1-BCC and RESP for speed - they add ~1-2 min each)
+            # Validate ESP
             validation = validate_molecule_esp(
                 molecule, mpfit_charges, gnn_charges,
                 qm_method=qm_method,
                 qm_basis=qm_basis,
-                include_am1bcc=False,
-                include_resp=False
+                include_am1bcc=True,
+                include_resp=True
             )
         print(f"[DEBUG] Molecule {idx}: ESP validation completed in {time.time() - t_esp_start:.2f}s")
 

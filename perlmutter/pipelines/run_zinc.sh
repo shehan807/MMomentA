@@ -24,11 +24,11 @@ cd "$MMOMENTA_DIR"
 echo "Step 1/6: Downloading ZINC dataset (PyTorch Geometric)..."
 conda activate "$ML_ENV"
 
-# Download ZINC using PyG (1000 molecules from train split)
+# Download ZINC using PyG (500 molecules from train split)
 python scripts/download_pyg_dataset.py \
     --dataset zinc \
     --output data/zinc_molecules.pkl \
-    --max-molecules 1000 \
+    --max-molecules 500 \
     --split train
 
 echo "✓ ZINC molecules downloaded"

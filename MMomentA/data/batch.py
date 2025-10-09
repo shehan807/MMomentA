@@ -164,7 +164,7 @@ class BatchProcessor:
                         n_jobs=self.n_jobs,
                         backend=self.backend,
                         verbose=0,  # Reduce verbosity for batches
-                        timeout=1800,
+                        timeout=300,  # 5 min timeout (reduced from 30 min)
                         batch_size=1,
                         pre_dispatch='2*n_jobs',
                         max_nbytes=None

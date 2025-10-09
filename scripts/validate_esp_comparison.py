@@ -380,7 +380,8 @@ def main():
         mpfit_charges = mol_data.target_charges
 
         # Get MPFIT computation time from dataset metadata (if available)
-        mpfit_time = getattr(mol_data, 'computation_time', None)
+        # It's stored in qm_metadata['calculation_time']
+        mpfit_time = mol_data.qm_metadata.get('calculation_time', None) if mol_data.qm_metadata else None
 
         # Predict charges with GNN
         t_gnn_inference_start = time.time()

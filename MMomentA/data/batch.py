@@ -141,8 +141,18 @@ class BatchProcessor:
         partial = sum(1 for r in results if r.partial_success)
         failed = n_molecules - successful
 
-        logger.info(f"Batch processing complete in {elapsed:.2f}s")
-        logger.info(f"Average time per molecule: {elapsed/n_molecules:.2f}s")
+        # Calculate true sequential time per molecule (sum of individual times)
+        total_sequential_time = 0.0
+        for r in results:
+            if r.success or r.partial_success:
+                for method_result in r.results.values():
+                    if isinstance(method_result, dict) and 'time' in method_result:
+                        total_sequential_time += method_result['time']
+
+        logger.info(f"Batch processing complete in {elapsed:.2f}s (wall-clock time)")
+        logger.info(f"Wall-clock time per molecule: {elapsed/n_molecules:.2f}s")
+        if successful > 0:
+            logger.info(f"True sequential time per molecule: {total_sequential_time/successful:.2f}s (excludes parallelization speedup)")
         logger.info(f"Fully successful: {successful}/{n_molecules}")
         logger.info(f"Partially successful: {partial}")
         logger.info(f"Complete failures: {failed}")

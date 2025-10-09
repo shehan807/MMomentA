@@ -54,6 +54,7 @@ from openff.recharge.esp.storage import MoleculeESPRecord
 from openff.recharge.grids import MSKGridSettings
 from openff.recharge.charges.library import LibraryChargeCollection, LibraryChargeGenerator
 from openff.units import unit as openff_unit
+from openff.units import Quantity
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -315,15 +316,16 @@ def fit_resp_from_esp(molecule: Molecule, grid_points: np.ndarray, esp_values: n
     )
 
     # Convert coordinates to openff Quantity with units
-    conformer_with_units = conformer_coords * openff_unit.angstrom
+    # Use Quantity() constructor to avoid pint.Quantity type mismatch
+    conformer_with_units = Quantity(conformer_coords, openff_unit.angstrom)
 
     # Create MoleculeESPRecord from existing data
     # Note: electric_field is not needed for RESP fitting, pass None
     esp_record = MoleculeESPRecord.from_molecule(
         molecule=molecule,
         conformer=conformer_with_units,
-        grid_coordinates=grid_points * openff_unit.angstrom,  # Convert to Quantity
-        esp=esp_values * openff_unit.hartree / openff_unit.elementary_charge,  # Convert to Quantity
+        grid_coordinates=Quantity(grid_points, openff_unit.angstrom),
+        esp=Quantity(esp_values, openff_unit.hartree / openff_unit.elementary_charge),
         electric_field=None,
         esp_settings=esp_settings
     )

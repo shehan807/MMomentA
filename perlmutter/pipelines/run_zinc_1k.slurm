@@ -5,6 +5,7 @@
 #SBATCH -N 1
 #SBATCH -G 1
 #SBATCH -c 128
+#SBATCH --mem=128GB
 #SBATCH -t 4:00:00
 #SBATCH -A m1266
 #SBATCH -o logs/zinc_1k_%j.out
@@ -158,7 +159,7 @@ python scripts/validate_esp_comparison.py \
     --qm-method hf \
     --qm-basis "6-31G*" \
     --device cpu \
-    --n-jobs 64
+    --n-jobs 16
 
 echo ""
 echo "================================================"

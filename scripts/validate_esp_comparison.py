@@ -137,10 +137,12 @@ def vdw_surface(coordinates, symbols, scale_factor, density, input_radii=None):
     for symbol in symbols:
         if symbol in radii:
             continue
+        # Convert to uppercase for lookup (VDW radii dict uses uppercase keys)
+        symbol_upper = symbol.upper()
         if symbol in input_radii:
             radii[symbol] = input_radii[symbol] * scale_factor
-        elif symbol in vdw_r:
-            radii[symbol] = vdw_r[symbol] * scale_factor
+        elif symbol_upper in vdw_r:
+            radii[symbol] = vdw_r[symbol_upper] * scale_factor
         else:
             raise KeyError(f'{symbol} is not a supported element; '
                          + 'add its van der Waals radius.')
@@ -238,7 +240,7 @@ def compute_qm_esp_psi4(molecule: Molecule, grid_points: np.ndarray,
     # This reads grid.dat and writes grid_esp.dat
     t_esp_start = time.time()
     psi4.core.set_output_file('psi4_output.dat', False)
-    psi4.set_active_molecule(psi4_mol)
+    # Molecule from psi4.geometry() is already active - no need to set it
     psi4.prop(qm_method, properties=['GRID_ESP'])
     print(f"[DEBUG]     * SCF + ESP calculation: {time.time() - t_esp_start:.2f}s")
 

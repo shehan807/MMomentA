@@ -224,7 +224,7 @@ def predict_charges(model: ChargeModel, mol_data: MoleculeData,
     return predicted_charges
 
 
-def validate_single_molecule(idx: int, mol_data: MoleculeData, model_path: Path,
+def validate_single_molecule(idx: int, mol_data: MoleculeData, model_dir: Path,
                              qm_method: str, qm_basis: str, device: str) -> dict:
     """Validate a single molecule (for parallel processing).
 
@@ -237,7 +237,7 @@ def validate_single_molecule(idx: int, mol_data: MoleculeData, model_path: Path,
     from openff.units import unit
 
     # Load model (each worker loads its own copy)
-    model = load_model(model_path, device=device)
+    model = load_model(model_dir, device=device)
 
     try:
         mpfit_charges = mol_data.target_charges
@@ -445,12 +445,13 @@ def main():
     # Validate each molecule in parallel
     from joblib import Parallel, delayed
 
-    model_path = Path(args.model_dir) / "checkpoints" / "best_model.pt"
+    # Pass model directory (not checkpoint path) - load_model() will append the checkpoint path
+    model_dir = Path(args.model_dir)
 
     logger.info("Starting parallel ESP validation...")
     validation_results = Parallel(n_jobs=args.n_jobs, backend='multiprocessing', verbose=10)(
         delayed(validate_single_molecule)(
-            idx, molecule_data_list[idx], model_path,
+            idx, molecule_data_list[idx], model_dir,
             args.qm_method, args.qm_basis, args.device
         )
         for idx in test_indices

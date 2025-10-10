@@ -58,8 +58,16 @@ with h5py.File(str(spice_path), 'r') as f:
             smiles = None
             if 'smiles' in grp:
                 smiles_data = grp['smiles'][()]
+                # Handle different storage formats
                 if isinstance(smiles_data, bytes):
                     smiles = smiles_data.decode('utf-8')
+                elif isinstance(smiles_data, np.ndarray):
+                    # Array of bytes - take first element and decode
+                    smiles = smiles_data[0] if len(smiles_data) > 0 else None
+                    if isinstance(smiles, bytes):
+                        smiles = smiles.decode('utf-8')
+                    elif smiles is not None:
+                        smiles = str(smiles)
                 else:
                     smiles = str(smiles_data)
             elif 'smiles' in grp.attrs:

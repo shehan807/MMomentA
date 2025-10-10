@@ -5,6 +5,7 @@
 #SBATCH -N 1
 #SBATCH -G 1
 #SBATCH -c 128
+#SBATCH --mem=128GB
 #SBATCH -t 48:00:00
 #SBATCH -A m1266
 #SBATCH -o logs/spice_10k_%j.out
@@ -59,14 +60,19 @@ import numpy as np
 molecules = []
 print("Extracting molecules from SPICE...")
 
-# Check if SPICE dataset exists
-spice_path = Path('data/SPICE-2.0.1.hdf5')
+# Check if SPICE dataset exists (in $SCRATCH)
+import os
+scratch_dir = os.environ.get('SCRATCH', os.path.expanduser('~'))
+spice_path = Path(scratch_dir) / 'SPICE-2.0.1.hdf5'
 if not spice_path.exists():
     print(f"✗ SPICE dataset not found at {spice_path}")
-    print("  Please download SPICE-2.0.1.hdf5 first")
+    print("  Please download SPICE-2.0.1.hdf5 to $SCRATCH:")
+    print(f"  cd {scratch_dir}")
+    print("  wget https://zenodo.org/records/10975225/files/SPICE-2.0.1.hdf5")
     exit(1)
 
-with h5py.File('data/SPICE-2.0.1.hdf5', 'r') as f:
+print(f"Loading SPICE dataset from {spice_path}")
+with h5py.File(str(spice_path), 'r') as f:
     mol_ids = list(f.keys())[:10000]
     print(f"Found {len(f.keys())} total molecules in SPICE, extracting first 10,000")
 
@@ -144,7 +150,7 @@ python scripts/prepare_dataset_cached.py \
     --train-frac 0.7 \
     --val-frac 0.15 \
     --test-frac 0.15 \
-    --n-jobs -1
+    --n-jobs 32
 
 echo "✓ SPICE 10k MPFIT dataset created"
 echo ""
@@ -233,7 +239,7 @@ python scripts/validate_esp_comparison.py \
     --qm-method hf \
     --qm-basis "6-31G*" \
     --device cpu \
-    --n-jobs 16
+    --n-jobs 32
 
 echo ""
 echo "================================================"

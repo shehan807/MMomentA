@@ -315,10 +315,18 @@ def fit_resp_from_esp(molecule: Molecule, grid_points: np.ndarray, esp_values: n
         grid_settings=MSKGridSettings()
     )
 
+    # Create molecule with single conformer to avoid dimension mismatch
+    # openff-recharge expects the molecule to have conformers matching the ESP data
+    # If molecule has multiple conformers but we only provide ESP for one,
+    # it causes "array dimension mismatch" errors during concatenation
+    single_conf_mol = Molecule(molecule)  # Create a copy
+    single_conf_mol._conformers = None    # Clear all conformers
+    single_conf_mol.add_conformer(conformer_coords * openff_unit.angstrom)  # Add single conformer
+
     # Pass numpy arrays directly - Pydantic validator handles unit conversion internally
     # The validator expects numpy arrays in the correct units (angstrom, hartree/e)
     esp_record = MoleculeESPRecord.from_molecule(
-        molecule=molecule,
+        molecule=single_conf_mol,          # Use single-conformer molecule
         conformer=conformer_coords,        # numpy array in angstrom
         grid_coordinates=grid_points,      # numpy array in angstrom
         esp=esp_values,                     # numpy array in hartree/e
@@ -330,9 +338,9 @@ def fit_resp_from_esp(molecule: Molecule, grid_points: np.ndarray, esp_values: n
     solver = IterativeSolver()
     charge_parameter = generate_resp_charge_parameter([esp_record], solver)
 
-    # Generate final charges
+    # Generate final charges using the single-conformer molecule
     charges = LibraryChargeGenerator.generate(
-        molecule, LibraryChargeCollection(parameters=[charge_parameter])
+        single_conf_mol, LibraryChargeCollection(parameters=[charge_parameter])
     )
 
     return charges.flatten()

@@ -13,11 +13,11 @@
 # ZINC 100k Dataset Pipeline - Steps 1-2 Only
 # Data preparation: Download and MPFIT charge generation
 #
-# Estimated time: ~50-55 hours on 1 CPU node (128 CPU cores)
+# Estimated time: ~42-45 hours on 1 CPU node (128 CPU cores)
 # Time breakdown (100,000 molecules):
 #   Step 1: Download - ~10-15 min
-#   Step 2: MPFIT charges - ~50 hours (32 cores parallel, GDMA is expensive)
-#   Total: ~50-55 hours
+#   Step 2: MPFIT charges - ~42 hours (64 cores parallel, GDMA is expensive)
+#   Total: ~42-45 hours
 #
 # Note: This only performs data preparation (steps 1-2).
 #       Run separate training/validation jobs (steps 3-6) after this completes.
@@ -70,7 +70,7 @@ python scripts/prepare_dataset_cached.py \
     --train-frac 0.7 \
     --val-frac 0.15 \
     --test-frac 0.15 \
-    --n-jobs 32
+    --n-jobs 64
 
 echo "✓ ZINC 100k MPFIT dataset created"
 echo ""

@@ -5,7 +5,7 @@
 #SBATCH -N 1
 #SBATCH -c 128
 #SBATCH --mem=256GB
-#SBATCH -t 60:00:00
+#SBATCH -t 48:00:00
 #SBATCH -A m1266
 #SBATCH -o logs/zinc_100k_step1_2_%j.out
 #SBATCH -e logs/zinc_100k_step1_2_%j.err

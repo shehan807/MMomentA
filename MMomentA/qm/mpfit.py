@@ -6,6 +6,8 @@ import numpy as np
 from dataclasses import dataclass
 from typing import Tuple, Dict, Any, Optional
 
+import psi4
+
 from openff.toolkit.topology import Molecule
 from openff.recharge.charges.library import LibraryChargeCollection, LibraryChargeGenerator
 from openff.recharge.charges.mpfit import generate_mpfit_charge_parameter
@@ -110,6 +112,16 @@ class MPFITCalculator:
 
         try:
             [input_conformer] = extract_conformers(molecule)
+
+            # Set robust SCF convergence options for challenging molecules
+            # (e.g., proteins, charged species, large systems from SPICE)
+            psi4.set_options({
+                'scf_type': 'df',           # Density fitting for faster convergence
+                'maxiter': 500,             # Increase from default 100
+                'soscf': 'true',            # Second-order SCF convergence
+                'level_shift': 0.3,         # Helps difficult SCF cases
+                'damping_percentage': 20,   # Damp oscillations
+            })
 
             conformer, multipoles = Psi4GDMAGenerator.generate(
                 molecule, input_conformer, self.qc_settings, minimize=self.config.minimize

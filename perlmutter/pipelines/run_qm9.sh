@@ -25,7 +25,7 @@ conda activate "$ML_ENV"
 
 python scripts/download_pyg_dataset.py \
     --dataset qm9 \
-    --output data/qm9_molecules.pkl \
+    --output "$SCRATCH/qm9_molecules.pkl" \
     --max-molecules 1000
 
 echo "✓ QM9 molecules downloaded"
@@ -36,14 +36,14 @@ echo "Step 2/5: Computing MPFIT charges for QM9 (cached if previously run)..."
 conda activate "$DATA_ENV"
 
 python scripts/prepare_dataset_cached.py \
-    --input data/qm9_molecules.pkl \
-    --output data/qm9_mpfit.h5 \
+    --input "$SCRATCH/qm9_molecules.pkl" \
+    --output "$SCRATCH/qm9_mpfit.h5" \
     --dataset-name "QM9" \
     --split-strategy scaffold \
     --train-frac 0.8 \
     --val-frac 0.1 \
     --test-frac 0.1 \
-    --n-jobs -1
+    --n-jobs 32
 
 echo "✓ QM9 MPFIT dataset created"
 echo ""
@@ -53,7 +53,7 @@ echo "Step 3/5: Training baseline model (1000 epochs)..."
 conda activate "$ML_ENV"
 
 python scripts/train_spice.py \
-    --dataset data/qm9_mpfit.h5 \
+    --dataset "$SCRATCH/qm9_mpfit.h5" \
     --output-dir runs/qm9_baseline \
     --no-multipoles \
     --n-epochs 1000 \
@@ -66,7 +66,7 @@ echo ""
 echo "Step 4/5: Training multipole model (1000 epochs)..."
 
 python scripts/train_spice.py \
-    --dataset data/qm9_mpfit.h5 \
+    --dataset "$SCRATCH/qm9_mpfit.h5" \
     --output-dir runs/qm9_multipoles \
     --n-epochs 1000 \
     --device cuda
@@ -114,13 +114,13 @@ conda activate "$DATA_ENV"
 mkdir -p figures/qm9_esp_validation
 
 python scripts/validate_esp_comparison.py \
-    --dataset data/qm9_mpfit.h5 \
+    --dataset "$SCRATCH/qm9_mpfit.h5" \
     --model-dir runs/qm9_multipoles \
     --output-dir figures/qm9_esp_validation \
     --qm-method hf \
     --qm-basis "6-31G*" \
     --device cpu \
-    --n-jobs 8
+    --n-jobs 32
 
 echo ""
 echo "================================================"

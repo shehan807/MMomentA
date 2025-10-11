@@ -12,9 +12,14 @@ def download_qm9(output_path: str, max_molecules: int = None):
     from torch_geometric.datasets import QM9
     from openff.toolkit import Molecule
     from openff.units import unit
+    import os
 
-    print("Downloading QM9 dataset...")
-    dataset = QM9(root='data/qm9_raw')
+    # Use $SCRATCH for raw data storage on Perlmutter
+    scratch_dir = os.environ.get('SCRATCH', 'data')
+    qm9_root = f'{scratch_dir}/qm9_raw'
+
+    print(f"Downloading QM9 dataset to {qm9_root}...")
+    dataset = QM9(root=qm9_root)
 
     molecules = []
     max_molecules = max_molecules or len(dataset)
@@ -70,6 +75,11 @@ def download_zinc(output_path: str, max_molecules: int = None, split: str = 'tra
     from openff.units import unit
     import pandas as pd
     import urllib.request
+    import os
+
+    # Use $SCRATCH for raw data storage on Perlmutter
+    scratch_dir = os.environ.get('SCRATCH', 'data')
+    zinc_root = f'{scratch_dir}/zinc_raw'
 
     # ZINC 250k dataset URL
     url = "https://raw.githubusercontent.com/aspuru-guzik-group/chemical_vae/master/models/zinc_properties/250k_rndm_zinc_drugs_clean_3.csv"
@@ -77,8 +87,8 @@ def download_zinc(output_path: str, max_molecules: int = None, split: str = 'tra
     print(f"Downloading ZINC 250k dataset from chemical_vae repository...")
     print(f"URL: {url}")
 
-    # Download CSV
-    csv_path = 'data/zinc_raw/250k_rndm_zinc_drugs_clean_3.csv'
+    # Download CSV to $SCRATCH
+    csv_path = f'{zinc_root}/250k_rndm_zinc_drugs_clean_3.csv'
     Path(csv_path).parent.mkdir(parents=True, exist_ok=True)
 
     urllib.request.urlretrieve(url, csv_path)

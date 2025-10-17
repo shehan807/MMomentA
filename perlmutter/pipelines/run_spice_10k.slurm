@@ -25,8 +25,7 @@
 #   Total: ~4-6 hours
 
 # Set working directory to MMomentA root
-# SLURM_SUBMIT_DIR is the directory where sbatch was called
-MMOMENTA_DIR="${MMOMENTA_DIR:-$SLURM_SUBMIT_DIR}"
+MMOMENTA_DIR="/global/u1/p/parmar/MoML/MMomentA"
 
 cd "$MMOMENTA_DIR"
 mkdir -p logs
@@ -167,7 +166,7 @@ echo ""
 echo "Step 3/6: Training baseline model (5000 epochs, espaloma-charge settings)..."
 conda activate "$ML_ENV"
 
-if [ -f "/global/u1/p/parmar/MoML/MMomentA/runs/spice_10k_baseline/checkpoints/best_model.pt" ]; then
+if [ -f "$MMOMENTA_DIR/runs/spice_10k_baseline/checkpoints/best_model.pt" ]; then
     echo "✓ SPICE 10k baseline model already trained (found checkpoint), skipping..."
 else
     python scripts/train_spice.py \
@@ -185,7 +184,7 @@ echo ""
 # Step 4: Train multipole model (with automatic width scaling)
 echo "Step 4/6: Training multipole model (5000 epochs, auto-scaled capacity)..."
 
-if [ -f "/global/u1/p/parmar/MoML/MMomentA/runs/spice_10k_multipoles/checkpoints/best_model.pt" ]; then
+if [ -f "$MMOMENTA_DIR/runs/spice_10k_multipoles/checkpoints/best_model.pt" ]; then
     echo "✓ SPICE 10k multipole model already trained (found checkpoint), skipping..."
 else
     # Multipole: 198 features → auto-scales width from 32 to 54 (198/117 * 32)

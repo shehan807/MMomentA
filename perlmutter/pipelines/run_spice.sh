@@ -3,10 +3,10 @@
 # 100 molecules from SPICE dataset
 
 # Set working directory to MMomentA root
-MMOMENTA_DIR="${MMOMENTA_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+MMOMENTA_DIR="/global/u1/p/parmar/MoML/MMomentA"
 
 echo "================================================"
-echo "MMomentA SPICE Training Pipeline (Perlmutter)"
+echo "MMomentA SPICE 100 Pipeline (Perlmutter)"
 echo "================================================"
 echo "Working directory: $MMOMENTA_DIR"
 echo ""
@@ -137,53 +137,66 @@ python scripts/prepare_dataset_cached.py \
 echo "✓ SPICE MPFIT dataset created"
 echo ""
 
-# Step 3: Train baseline model
-echo "Step 3/6: Training SPICE baseline model (1000 epochs)..."
+# Step 3: Train baseline model (no multipoles)
+echo "Step 3/6: Training baseline model (1000 epochs, espaloma-charge settings)..."
 conda activate "$ML_ENV"
 
-python scripts/train_spice.py \
-    --dataset data/spice_mpfit.h5 \
-    --output-dir runs/spice_baseline \
-    --no-multipoles \
-    --n-epochs 1000 \
-    --device cuda
-
-echo "✓ SPICE baseline trained"
+if [ -f "$MMOMENTA_DIR/runs/spice_baseline/checkpoints/best_model.pt" ]; then
+    echo "✓ SPICE baseline model already trained (found checkpoint), skipping..."
+else
+    # Baseline: espaloma-charge settings (width=32, input=128, 1000 epochs)
+    python scripts/train_spice.py \
+        --dataset data/spice_mpfit.h5 \
+        --output-dir runs/spice_baseline \
+        --no-multipoles \
+        --n-epochs 1000 \
+        --width 32 \
+        --early-stopping-patience 500 \
+        --device cuda
+    echo "✓ SPICE baseline model trained"
+fi
 echo ""
 
-# Step 4: Train with multipoles
-echo "Step 4/6: Training SPICE multipole model (1000 epochs)..."
+# Step 4: Train multipole model (with automatic width scaling)
+echo "Step 4/6: Training multipole model (1000 epochs, auto-scaled capacity)..."
 
-python scripts/train_spice.py \
-    --dataset data/spice_mpfit.h5 \
-    --output-dir runs/spice_multipoles \
-    --n-epochs 1000 \
-    --device cuda
-
-echo "✓ SPICE multipole model trained"
+if [ -f "$MMOMENTA_DIR/runs/spice_multipoles/checkpoints/best_model.pt" ]; then
+    echo "✓ SPICE multipole model already trained (found checkpoint), skipping..."
+else
+    # Multipole: 198 features → auto-scales width from 32 to 54 (198/117 * 32)
+    # This maintains the same compression ratio as baseline
+    python scripts/train_spice.py \
+        --dataset data/spice_mpfit.h5 \
+        --output-dir runs/spice_multipoles \
+        --n-epochs 1000 \
+        --width 32 \
+        --early-stopping-patience 500 \
+        --device cuda
+    echo "✓ SPICE multipole model trained"
+fi
 echo ""
 
-# Step 5: Compare results
-echo "Step 5/6: Comparing SPICE training results..."
+# Step 5: Compare training results
+echo "Step 5/6: Comparing training results..."
 
 python << 'EOF'
 import json
-from pathlib import Path
 
 baseline = json.load(open('runs/spice_baseline/training_results.json'))
-multipoles = json.load(open('runs/spice_multipoles/training_results.json'))
+multipole = json.load(open('runs/spice_multipoles/training_results.json'))
 
 baseline_test = baseline['results']['test_metrics']
-multipole_test = multipoles['results']['test_metrics']
+multipole_test = multipole['results']['test_metrics']
 
 print("\n" + "="*70)
-print("SPICE TRAINING RESULTS COMPARISON")
+print("TRAINING RESULTS COMPARISON")
 print("="*70)
-print("\nBaseline Model (no multipoles):")
+
+print("\nBaseline Model (no multipoles, width=32):")
 print(f"  Test RMSE: {baseline_test['val_rmse']:.4f}")
 print(f"  Test MAE:  {baseline_test['val_mae']:.4f}")
 
-print("\nMultipole Model:")
+print("\nMultipole Model (auto-scaled width):")
 print(f"  Test RMSE: {multipole_test['val_rmse']:.4f}")
 print(f"  Test MAE:  {multipole_test['val_mae']:.4f}")
 
@@ -191,39 +204,36 @@ improvement = ((baseline_test['val_rmse'] - multipole_test['val_rmse']) /
                baseline_test['val_rmse'] * 100)
 
 print(f"\nImprovement: {improvement:+.1f}%")
-
-if improvement > 0:
-    print("✓ Multipoles improve charge prediction!")
-else:
-    print("✗ Multipoles did not improve performance")
-
 print("="*70)
 EOF
 
 echo ""
 
-# Step 6: ESP Validation (RESP vs AM1-BCC vs MPFIT vs MMomentA-GNN)
-echo "Step 6/6: ESP validation comparison (RESP, AM1-BCC, MPFIT, MMomentA-GNN)..."
+# Step 6: Validating ESP reproduction (MPFIT, AM1-BCC, RESP, MMomentA-GNN)
+echo "Step 6/6: Validating ESP reproduction (using multipole model)..."
 conda activate "$DATA_ENV"
-echo ""
 
-python scripts/compare_all_methods.py \
-    --molecules data/spice_100.pkl \
-    --output-dir figures/spice_esp_comparison \
-    --mpfit-gnn-results runs/spice_multipoles/esp_validation_results.json \
+mkdir -p figures/spice_esp_validation
+
+python scripts/validate_esp_comparison.py \
+    --dataset data/spice_mpfit.h5 \
+    --model-dir runs/spice_multipoles \
+    --output-dir figures/spice_esp_validation \
     --qm-method hf \
     --qm-basis "6-31G*" \
-    --verbose
+    --device cpu \
+    --n-jobs 16
 
 echo ""
 echo "================================================"
-echo "SPICE Pipeline Complete!"
+echo "SPICE 100 Pipeline Complete!"
 echo "================================================"
-echo "Training results: runs/spice_{baseline,multipoles}/"
-echo "ESP comparison: figures/spice_esp_comparison/"
-echo "  - Violin plots: figures/spice_esp_comparison/esp_comparison_violin.png"
-echo "  - Results JSON: figures/spice_esp_comparison/qm_methods_results.json"
-echo ""
-echo "Next: Run ZINC transfer learning pipeline"
-echo "  bash perlmutter/pipelines/run_zinc.sh"
+echo "Training results:"
+echo "  - Baseline:  runs/spice_baseline/"
+echo "  - Multipole: runs/spice_multipoles/"
+echo "ESP validation plots:"
+echo "  - ESP MAE plot:  figures/spice_esp_validation/esp_validation_mae.png"
+echo "  - ESP RMSE plot: figures/spice_esp_validation/esp_validation_rmse.png"
+echo "  - Carbon hexbin: figures/spice_esp_validation/carbon_charge_hexbin.png"
+echo "Validation metrics: figures/spice_esp_validation/esp_validation_results.json"
 echo ""

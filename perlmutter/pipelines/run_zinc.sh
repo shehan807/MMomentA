@@ -3,7 +3,7 @@
 # Same workflow as MVP, but with 2000 ZINC molecules
 
 # Set working directory to MMomentA root
-MMOMENTA_DIR="${MMOMENTA_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+MMOMENTA_DIR="/global/u1/p/parmar/MoML/MMomentA"
 
 echo "================================================"
 echo "MMomentA ZINC 2k Pipeline (Perlmutter)"
@@ -55,7 +55,7 @@ echo ""
 echo "Step 3/6: Training baseline model (5000 epochs, espaloma-charge settings)..."
 conda activate "$ML_ENV"
 
-if [ -f "/global/u1/p/parmar/MoML/MMomentA/runs/zinc_2k_baseline/checkpoints/best_model.pt" ]; then
+if [ -f "$MMOMENTA_DIR/runs/zinc_2k_baseline/checkpoints/best_model.pt" ]; then
     echo "✓ ZINC 2k baseline model already trained (found checkpoint), skipping..."
 else
     # Baseline: espaloma-charge settings (width=32, input=128, 5000 epochs)
@@ -74,7 +74,7 @@ echo ""
 # Step 4: Train multipole model (with automatic width scaling)
 echo "Step 4/6: Training multipole model (5000 epochs, auto-scaled capacity)..."
 
-if [ -f "/global/u1/p/parmar/MoML/MMomentA/runs/zinc_2k_multipoles/checkpoints/best_model.pt" ]; then
+if [ -f "$MMOMENTA_DIR/runs/zinc_2k_multipoles/checkpoints/best_model.pt" ]; then
     echo "✓ ZINC 2k multipole model already trained (found checkpoint), skipping..."
 else
     # Multipole: 198 features → auto-scales width from 32 to 54 (198/117 * 32)

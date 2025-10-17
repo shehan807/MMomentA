@@ -23,8 +23,7 @@
 #       Run separate training/validation jobs (steps 3-6) after this completes.
 
 # Set working directory to MMomentA root
-# SLURM_SUBMIT_DIR is the directory where sbatch was called
-MMOMENTA_DIR="${MMOMENTA_DIR:-$SLURM_SUBMIT_DIR}"
+MMOMENTA_DIR="/global/u1/p/parmar/MoML/MMomentA"
 
 cd "$MMOMENTA_DIR"
 mkdir -p logs

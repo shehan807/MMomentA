@@ -223,7 +223,7 @@ def main():
 
     # Create datasets
     print("\nCreating datasets...")
-    datasets = create_split_datasets(
+    split_datasets = create_split_datasets(
         molecule_data_list,
         train_indices,
         val_indices,
@@ -231,7 +231,9 @@ def main():
         include_multipoles=True  # Use multipoles if available
     )
 
-    train_dataset, val_dataset, test_dataset = datasets
+    train_dataset = split_datasets.train_dataset
+    val_dataset = split_datasets.val_dataset
+    test_dataset = split_datasets.test_dataset
 
     print(f"  Train: {len(train_dataset)} molecules")
     print(f"  Val: {len(val_dataset)} molecules")

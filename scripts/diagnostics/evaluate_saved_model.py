@@ -210,11 +210,14 @@ def main():
 
     splits = metadata['splits']
 
+    print(f"  Available split keys: {list(splits.keys())}")
+
     # Convert molecule IDs to indices
     id_to_idx = {mol.molecule_id: idx for idx, mol in enumerate(molecule_data_list)}
 
     train_ids = splits.get('train', [])
-    val_ids = splits.get('validation', [])
+    # Try both 'validation' and 'val' keys
+    val_ids = splits.get('validation', splits.get('val', []))
     test_ids = splits.get('test', [])
 
     train_indices = [id_to_idx[mol_id] for mol_id in train_ids if mol_id in id_to_idx]
@@ -245,31 +248,42 @@ def main():
         return dgl.batch(samples)
 
     if args.split == 'train' or args.split == 'all':
-        train_loader = torch.utils.data.DataLoader(
-            train_dataset,
-            batch_size=args.batch_size,
-            shuffle=False,
-            collate_fn=collate_fn
-        )
-        train_results = evaluate_split(model, train_loader, device, "train")
+        if len(train_dataset) == 0:
+            print("\nWARNING: Train dataset is empty!")
+        else:
+            train_loader = torch.utils.data.DataLoader(
+                train_dataset,
+                batch_size=args.batch_size,
+                shuffle=False,
+                collate_fn=collate_fn
+            )
+            train_results = evaluate_split(model, train_loader, device, "train")
 
     if args.split == 'validation' or args.split == 'all':
-        val_loader = torch.utils.data.DataLoader(
-            val_dataset,
-            batch_size=args.batch_size,
-            shuffle=False,
-            collate_fn=collate_fn
-        )
-        val_results = evaluate_split(model, val_loader, device, "validation")
+        if len(val_dataset) == 0:
+            print("\nERROR: Validation dataset is empty!")
+            print("  Check that metadata uses correct split key ('val' or 'validation')")
+            sys.exit(1)
+        else:
+            val_loader = torch.utils.data.DataLoader(
+                val_dataset,
+                batch_size=args.batch_size,
+                shuffle=False,
+                collate_fn=collate_fn
+            )
+            val_results = evaluate_split(model, val_loader, device, "validation")
 
     if args.split == 'test' or args.split == 'all':
-        test_loader = torch.utils.data.DataLoader(
-            test_dataset,
-            batch_size=args.batch_size,
-            shuffle=False,
-            collate_fn=collate_fn
-        )
-        test_results = evaluate_split(model, test_loader, device, "test")
+        if len(test_dataset) == 0:
+            print("\nWARNING: Test dataset is empty!")
+        else:
+            test_loader = torch.utils.data.DataLoader(
+                test_dataset,
+                batch_size=args.batch_size,
+                shuffle=False,
+                collate_fn=collate_fn
+            )
+            test_results = evaluate_split(model, test_loader, device, "test")
 
     # Summary
     print("="*80)

@@ -4,7 +4,6 @@
 #SBATCH -C cpu
 #SBATCH -N 1
 #SBATCH -c 64
-#SBATCH --mem=128GB
 #SBATCH -t 04:00:00
 #SBATCH -A m1266
 #SBATCH -o logs/zinc_100k_esp_merge_%j.out

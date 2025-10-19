@@ -32,11 +32,9 @@ from MMomentA.data.storage import load_dataset_hdf5
 SLURM_TEMPLATE = """#!/bin/bash
 #SBATCH -J zinc_esp_c{chunk_id:02d}
 #SBATCH -q regular
-#SBATCH -C gpu
+#SBATCH -C cpu
 #SBATCH -N 1
-#SBATCH -G 0
 #SBATCH -c 128
-#SBATCH --mem=256GB
 #SBATCH -t {time_limit}
 #SBATCH -A m1266
 #SBATCH -o {log_dir}/zinc_100k_esp_chunk_{chunk_id:02d}_%j.out

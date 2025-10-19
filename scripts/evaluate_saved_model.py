@@ -203,11 +203,31 @@ def main():
     print(f"  Loaded {len(molecule_data_list)} molecules")
     print(f"  Dataset: {metadata.get('dataset_name', 'Unknown')}")
 
+    # Extract split indices from metadata
+    if 'splits' not in metadata:
+        print("ERROR: No split information in metadata!")
+        sys.exit(1)
+
+    splits = metadata['splits']
+
+    # Convert molecule IDs to indices
+    id_to_idx = {mol.molecule_id: idx for idx, mol in enumerate(molecule_data_list)}
+
+    train_ids = splits.get('train', [])
+    val_ids = splits.get('validation', [])
+    test_ids = splits.get('test', [])
+
+    train_indices = [id_to_idx[mol_id] for mol_id in train_ids if mol_id in id_to_idx]
+    val_indices = [id_to_idx[mol_id] for mol_id in val_ids if mol_id in id_to_idx]
+    test_indices = [id_to_idx[mol_id] for mol_id in test_ids if mol_id in id_to_idx]
+
     # Create datasets
     print("\nCreating datasets...")
     datasets = create_split_datasets(
         molecule_data_list,
-        metadata,
+        train_indices,
+        val_indices,
+        test_indices,
         include_multipoles=True  # Use multipoles if available
     )
 

@@ -287,7 +287,7 @@ def main():
 
         metrics = compute_metrics(gnn, mpfit)
         per_element_metrics[element] = {
-            'count': len(mpfit),
+            'n_atoms': len(mpfit),  # Use 'n_atoms' to match plotting script expectation
             **metrics
         }
 

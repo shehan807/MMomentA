@@ -384,14 +384,20 @@ def load_model(model_dir: Path, device: str = 'cpu') -> ChargeModel:
 
 
 def predict_charges(model: ChargeModel, mol_data: MoleculeData,
-                    device: str = 'cpu') -> np.ndarray:
+                    multipole_stats: dict = None, device: str = 'cpu') -> np.ndarray:
     """Predict charges for a molecule using trained model."""
 
     # Convert MoleculeData to DGL graph
     # Infer multipoles from feature_units: 117 = no multipoles, 198 = with multipoles
     feature_units = model.config.feature_units
     include_multipoles = (feature_units > 150)  # 198 vs 117
-    graph = molecule_data_to_dgl_graph(mol_data, include_multipoles=include_multipoles)
+
+    # CRITICAL FIX: Pass multipole_stats for normalization!
+    graph = molecule_data_to_dgl_graph(
+        mol_data,
+        include_multipoles=include_multipoles,
+        multipole_stats=multipole_stats
+    )
     graph = graph.to(device)
 
     # Predict
@@ -403,7 +409,7 @@ def predict_charges(model: ChargeModel, mol_data: MoleculeData,
 
 
 def validate_single_molecule_worker(idx: int, mol_data: MoleculeData, model_dir: Path,
-                                    qm_method: str, qm_basis: str, device: str) -> dict:
+                                    qm_method: str, qm_basis: str, multipole_stats: dict, device: str) -> dict:
     """Worker function for parallel validation with proper thread isolation.
 
     Sets up isolated environment for each worker to avoid Psi4 thread contention.
@@ -426,7 +432,7 @@ def validate_single_molecule_worker(idx: int, mol_data: MoleculeData, model_dir:
             os.chdir(temp_dir)
 
             # Call the actual validation logic
-            result = validate_single_molecule(idx, mol_data, model_dir, qm_method, qm_basis, device)
+            result = validate_single_molecule(idx, mol_data, model_dir, qm_method, qm_basis, multipole_stats, device)
 
             os.chdir(original_cwd)
             return result
@@ -442,7 +448,7 @@ def validate_single_molecule_worker(idx: int, mol_data: MoleculeData, model_dir:
 
 
 def validate_single_molecule(idx: int, mol_data: MoleculeData, model_dir: Path,
-                             qm_method: str, qm_basis: str, device: str) -> dict:
+                             qm_method: str, qm_basis: str, multipole_stats: dict, device: str) -> dict:
     """Validate a single molecule (core validation logic).
 
     This function contains the actual validation logic and can be called
@@ -465,7 +471,7 @@ def validate_single_molecule(idx: int, mol_data: MoleculeData, model_dir: Path,
 
         # Predict charges with GNN
         t_gnn_start = time.time()
-        gnn_charges = predict_charges(model, mol_data, device=device)
+        gnn_charges = predict_charges(model, mol_data, multipole_stats=multipole_stats, device=device)
         gnn_inference_time = time.time() - t_gnn_start
         print(f"[DEBUG] Molecule {idx}: GNN prediction in {gnn_inference_time:.2f}s")
 
@@ -698,20 +704,45 @@ def main():
     logger.info(f"Loading dataset from {args.dataset}")
     molecule_data_list, metadata = load_dataset_hdf5(args.dataset)
 
-    # Get test molecules
+    # Get train/test split indices
     if metadata and 'splits' in metadata:
         # Metadata contains molecule IDs, not indices - need to convert
+        id_to_idx = {mol.molecule_id: idx for idx, mol in enumerate(molecule_data_list)}
+
+        # Get training indices for computing multipole stats
+        train_molecule_ids = metadata['splits'].get('train', [])
+        train_indices = [id_to_idx[mol_id] for mol_id in train_molecule_ids if mol_id in id_to_idx]
+
+        # Get test indices for validation
         test_molecule_ids = metadata['splits'].get('test', [])
         if test_molecule_ids:
-            # Create mapping from molecule_id to index
-            id_to_idx = {mol.molecule_id: idx for idx, mol in enumerate(molecule_data_list)}
             test_indices = [id_to_idx[mol_id] for mol_id in test_molecule_ids if mol_id in id_to_idx]
         else:
             test_indices = list(range(len(molecule_data_list)))
     else:
         # Fallback: validate all molecules if no split info
         logger.warning("No split information found in metadata - validating all molecules")
+        train_indices = []
         test_indices = list(range(len(molecule_data_list)))
+
+    # CRITICAL FIX: Compute multipole normalization statistics from training set
+    logger.info("Computing multipole normalization statistics from training set...")
+    if train_indices and model.config.feature_units > 150:  # Has multipoles
+        import numpy as np
+        all_multipoles = []
+        for idx in train_indices[:min(10000, len(train_indices))]:  # Use up to 10k for stats
+            mol_data = molecule_data_list[idx]
+            all_multipoles.append(mol_data.multipole_moments)
+
+        all_multipoles = np.vstack(all_multipoles)
+        multipole_stats = {
+            'mean': np.mean(all_multipoles, axis=0),
+            'std': np.std(all_multipoles, axis=0) + 1e-8  # Avoid division by zero
+        }
+        logger.info(f"  Computed multipole stats from {len(all_multipoles)} training molecules")
+    else:
+        multipole_stats = None
+        logger.info("  No multipoles or no training data - skipping normalization")
 
     # Extract chunk
     chunk_indices = test_indices[args.start_idx:args.end_idx]
@@ -735,7 +766,7 @@ def main():
         validation_results = [
             validate_single_molecule(
                 idx, molecule_data_list[idx], model_dir,
-                args.qm_method, args.qm_basis, args.device
+                args.qm_method, args.qm_basis, multipole_stats, args.device
             )
             for idx in chunk_indices
         ]
@@ -746,7 +777,7 @@ def main():
         validation_results = Parallel(n_jobs=args.n_jobs, backend='loky', verbose=10)(
             delayed(validate_single_molecule_worker)(
                 idx, molecule_data_list[idx], model_dir,
-                args.qm_method, args.qm_basis, args.device
+                args.qm_method, args.qm_basis, multipole_stats, args.device
             )
             for idx in chunk_indices
         )

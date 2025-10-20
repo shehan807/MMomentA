@@ -87,7 +87,7 @@ def evaluate_split(model, dataloader, device, split_name):
 
             predictions = batch_graph.ndata["q"].cpu().numpy()
             targets = batch_graph.ndata["q_ref"].cpu().numpy()
-            atomic_numbers = batch_graph.ndata["h0"][:, 0].cpu().numpy()  # First feature is atomic number
+            atomic_numbers = batch_graph.ndata["type"].squeeze(-1).cpu().numpy()  # Atomic numbers from 'type' field
 
             all_predictions.append(predictions)
             all_targets.append(targets)

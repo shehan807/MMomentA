@@ -87,7 +87,7 @@ def test_single_molecule(model, mol_data, device='cpu'):
     # Extract predictions and targets
     predictions = graph.ndata["q"].cpu().numpy().flatten()
     targets = graph.ndata["q_ref"].cpu().numpy().flatten()
-    atomic_numbers = graph.ndata["h0"][:, 0].cpu().numpy()  # First feature is atomic number
+    atomic_numbers = graph.ndata["type"].squeeze(-1).cpu().numpy()  # Atomic numbers from 'type' field
 
     return predictions, targets, atomic_numbers
 

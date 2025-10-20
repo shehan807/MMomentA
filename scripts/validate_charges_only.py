@@ -191,7 +191,8 @@ def main():
             'mean': np.mean(all_multipoles, axis=0),
             'std': np.std(all_multipoles, axis=0) + 1e-8
         }
-        logger.info(f"  Computed from {len(all_multipoles)} training molecules")
+        n_mols_used = min(10000, len(train_indices))
+        logger.info(f"  Computed from {len(all_multipoles):,} atoms in {n_mols_used:,} training molecules")
     else:
         multipole_stats = None
         logger.info("  No multipoles - using baseline features only")
@@ -319,27 +320,55 @@ def main():
 
     logger.info(f"\n✓ Results saved to: {output_file}")
 
-    # Generate plots
+    # Save per-element charge data for plotting (NPZ format - same as ESP validation)
+    logger.info("\nSaving per-element charge data...")
+
+    # Convert element_charges dict to numpy arrays
+    for element in element_charges:
+        element_charges[element]['mpfit'] = np.array(element_charges[element]['mpfit'])
+        element_charges[element]['gnn'] = np.array(element_charges[element]['gnn'])
+
+    element_data_file = output_dir / "element_charge_data.npz"
+    np.savez(
+        element_data_file,
+        **{f'{elem}_ref': element_charges[elem]['mpfit'] for elem in element_charges},
+        **{f'{elem}_pred': element_charges[elem]['gnn'] for elem in element_charges},
+        elements=np.array(list(element_charges.keys()))
+    )
+
+    logger.info(f"✓ Element charge data saved to: {element_data_file}")
+
+    # Generate plots using existing plot_element_charge_comparison.py script
     logger.info("\nGenerating element-wise plots...")
 
     try:
-        from figures.plot_comparison import create_element_hexbin_plots
+        import subprocess
 
-        plot_dir = output_dir / "plots"
-        plot_dir.mkdir(exist_ok=True)
+        plot_script = Path(__file__).parent / "plot_element_charge_comparison.py"
 
-        # Call plotting function with charge data
-        create_element_hexbin_plots(
-            element_charges,
-            output_dir=str(plot_dir),
-            method_name="GNN"
-        )
+        if plot_script.exists():
+            result = subprocess.run(
+                [sys.executable, str(plot_script),
+                 "--data-file", str(element_data_file),
+                 "--results-file", str(output_file),
+                 "--output-dir", str(output_dir)],
+                capture_output=True,
+                text=True
+            )
 
-        logger.info(f"✓ Plots saved to: {plot_dir}")
+            if result.returncode == 0:
+                logger.info(f"✓ Plots generated successfully")
+            else:
+                logger.warning(f"Plotting script failed: {result.stderr}")
+                logger.info("You can generate plots manually with:")
+                logger.info(f"  python {plot_script} --data-file {element_data_file} --results-file {output_file} --output-dir {output_dir}")
+        else:
+            logger.warning(f"Plotting script not found: {plot_script}")
+            logger.info("You can generate plots manually with plot_element_charge_comparison.py")
 
-    except ImportError:
-        logger.warning("Could not import plotting functions - skipping plots")
-        logger.info("Run scripts/plot_element_charge_comparison.py manually to generate plots")
+    except Exception as e:
+        logger.warning(f"Could not generate plots: {e}")
+        logger.info(f"Generate plots manually: python scripts/plot_element_charge_comparison.py --data-file {element_data_file} --results-file {output_file} --output-dir {output_dir}")
 
     logger.info("\n" + "="*80)
     logger.info("VALIDATION COMPLETE")

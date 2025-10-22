@@ -49,6 +49,33 @@ def get_method_markers() -> Dict[str, str]:
     }
 
 
+def clip_to_percentile(data: np.ndarray,
+                       lower_percentile: float = 2.5,
+                       upper_percentile: float = 97.5) -> np.ndarray:
+    """Clip data to specified percentile range to remove outliers.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Input data array
+    lower_percentile : float
+        Lower percentile bound (default: 2.5 for 95% CI)
+    upper_percentile : float
+        Upper percentile bound (default: 97.5 for 95% CI)
+
+    Returns
+    -------
+    np.ndarray
+        Data clipped to percentile range
+    """
+    if len(data) == 0:
+        return data
+
+    lower = np.percentile(data, lower_percentile)
+    upper = np.percentile(data, upper_percentile)
+    return data[(data >= lower) & (data <= upper)]
+
+
 def create_correlation_plot(charges1: np.ndarray,
                           charges2: np.ndarray,
                           method1: str,
@@ -162,7 +189,9 @@ def create_violin_plots(metrics: Dict,
 
     for method in methods:
         if metrics['mae'][method]:  # Only include if data exists
-            mae_data.append(metrics['mae'][method])
+            # Clip to 95% CI to remove extreme outliers
+            clipped = clip_to_percentile(np.array(metrics['mae'][method]))
+            mae_data.append(clipped)
             mae_labels.append(short_labels.get(method, method))
             mae_colors.append(colors.get(method, '#333333'))
 
@@ -195,7 +224,9 @@ def create_violin_plots(metrics: Dict,
 
     for method in methods:
         if metrics['rmse'][method]:  # Only include if data exists
-            rmse_data.append(metrics['rmse'][method])
+            # Clip to 95% CI to remove extreme outliers
+            clipped = clip_to_percentile(np.array(metrics['rmse'][method]))
+            rmse_data.append(clipped)
             rmse_labels.append(short_labels.get(method, method))
             rmse_colors.append(colors.get(method, '#333333'))
 
@@ -333,7 +364,9 @@ def create_esp_violin_plot(metrics: Dict,
 
     for key in method_keys:
         if key in metrics and metrics[key]['mae']:
-            mae_data.append(metrics[key]['mae'])
+            # Clip to 95% CI to remove extreme outliers
+            clipped = clip_to_percentile(np.array(metrics[key]['mae']))
+            mae_data.append(clipped)
             mae_labels.append(method_labels[key])
             mae_colors.append(colors[color_keys[key]])
 
@@ -378,7 +411,9 @@ def create_esp_violin_plot(metrics: Dict,
 
     for key in method_keys:
         if key in metrics and metrics[key]['rmse']:
-            rmse_data.append(metrics[key]['rmse'])
+            # Clip to 95% CI to remove extreme outliers
+            clipped = clip_to_percentile(np.array(metrics[key]['rmse']))
+            rmse_data.append(clipped)
             rmse_labels.append(method_labels[key])
             rmse_colors.append(colors[color_keys[key]])
 

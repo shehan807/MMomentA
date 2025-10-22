@@ -107,6 +107,42 @@ def main():
         print("Expected format: {'method': {'mae': [...], 'rmse': [...]}}")
         sys.exit(1)
 
+    # Print summary statistics
+    print("="*70)
+    print("SUMMARY STATISTICS")
+    print("="*70)
+
+    # Overall dataset info
+    if 'n_molecules' in data:
+        print(f"Total molecules: {data['n_molecules']:,}")
+    if 'elapsed_time' in data:
+        print(f"Total time: {data['elapsed_time']:.1f} seconds")
+        if 'n_molecules' in data:
+            throughput = data['n_molecules'] / data['elapsed_time']
+            print(f"Throughput: {throughput:.1f} molecules/second")
+
+    print(f"\nMethods with valid data: {len(valid_metrics)}/{len(['mpfit', 'am1bcc', 'resp', 'gnn'])}")
+    print("")
+
+    # Per-method statistics
+    import numpy as np
+    for method_key, method_label in [('mpfit', 'MPFIT'), ('am1bcc', 'AM1-BCC'),
+                                      ('resp', 'RESP'), ('gnn', 'MMomentA-GNN')]:
+        if method_key in valid_metrics:
+            mae_vals = np.array(valid_metrics[method_key]['mae'])
+            rmse_vals = np.array(valid_metrics[method_key]['rmse'])
+
+            print(f"{method_label}:")
+            print(f"  MAE:  mean={np.mean(mae_vals):.5f}, median={np.median(mae_vals):.5f}, "
+                  f"std={np.std(mae_vals):.5f} a.u.")
+            print(f"  RMSE: mean={np.mean(rmse_vals):.5f}, median={np.median(rmse_vals):.5f}, "
+                  f"std={np.std(rmse_vals):.5f} a.u.")
+            print(f"  N = {len(mae_vals)} molecules")
+            print("")
+
+    print("="*70)
+    print("")
+
     # Generate plots with 95% CI clipping (only valid methods)
     print("Generating ESP violin plots (95% CI clipped)...")
     try:
@@ -124,8 +160,9 @@ def main():
         print(f"✓ ESP MAE plot:  {mae_file}")
         print(f"✓ ESP RMSE plot: {rmse_file}")
         print("")
-        print("Plots now show data clipped to 95% CI (2.5th-97.5th percentile)")
-        print("to remove extreme outliers for clearer visualization.")
+        print("NOTE: Plots show data clipped to 95% CI (2.5th-97.5th percentile)")
+        print("      to remove extreme outliers for clearer visualization.")
+        print("      Statistics above computed on full unclipped data.")
         print("")
 
     except Exception as e:

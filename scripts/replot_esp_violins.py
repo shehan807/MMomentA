@@ -86,32 +86,32 @@ def main():
 
     print(f"Found methods: {list(esp_metrics.keys())}")
 
-    # Check data structure
-    valid_methods = 0
+    # Check data structure and filter to only valid methods
+    valid_metrics = {}
     for method in ['mpfit', 'am1bcc', 'resp', 'gnn']:
         if method in esp_metrics and esp_metrics[method]:
-            if 'mae' in esp_metrics[method] and 'rmse' in esp_metrics[method]:
+            if isinstance(esp_metrics[method], dict) and 'mae' in esp_metrics[method] and 'rmse' in esp_metrics[method]:
                 n_mae = len(esp_metrics[method]['mae'])
                 n_rmse = len(esp_metrics[method]['rmse'])
                 print(f"  {method}: {n_mae} MAE values, {n_rmse} RMSE values")
-                valid_methods += 1
+                valid_metrics[method] = esp_metrics[method]
             else:
-                print(f"  {method}: Missing 'mae' or 'rmse' data")
+                print(f"  {method}: Skipped (missing 'mae' or 'rmse' data)")
         else:
-            print(f"  {method}: No data")
+            print(f"  {method}: Skipped (no data)")
 
     print("")
 
-    if valid_methods == 0:
+    if len(valid_metrics) == 0:
         print("ERROR: No valid method data found!")
         print("Expected format: {'method': {'mae': [...], 'rmse': [...]}}")
         sys.exit(1)
 
-    # Generate plots with 95% CI clipping
+    # Generate plots with 95% CI clipping (only valid methods)
     print("Generating ESP violin plots (95% CI clipped)...")
     try:
         mae_file, rmse_file = create_esp_violin_plot(
-            esp_metrics,
+            valid_metrics,
             output_dir=str(output_dir),
             qm_method=args.qm_method,
             qm_basis=args.qm_basis
